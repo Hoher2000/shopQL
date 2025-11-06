@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/mcuadros/go-lookup"
+	"github.com/sanity-io/litter"
 	"gopkg.in/d4l3k/messagediff.v1"
 )
 
@@ -46,6 +47,10 @@ type ApiTestCase struct {
 var (
 	client = &http.Client{Timeout: 10 * time.Second}
 )
+
+func dd(elems ...any) {
+	litter.Dump(elems...)
+}
 
 func WeirdMagicClone(in interface{}) interface{} {
 	return reflect.New(reflect.TypeOf(in).Elem()).Interface()
@@ -878,7 +883,7 @@ func TestApp(t *testing.T) {
 				t.Fatalf("request error: %v", err)
 			}
 			defer resp.Body.Close()
-			respBody, err := ioutil.ReadAll(resp.Body)
+			respBody, err := io.ReadAll(resp.Body)
 
 			// t.Logf("\nreq body: %s\nresp body: %s", body, respBody)
 
