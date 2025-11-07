@@ -1,4 +1,4 @@
-module hw11_shopql
+module github.com/Hoher2000/shopQL
 
 go 1.24.0
 
