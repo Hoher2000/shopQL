@@ -1,5 +1,18 @@
-type Cart {
-  
+directive @goModel(
+	model: String
+	models: [String!]
+) on OBJECT | INPUT_OBJECT | SCALAR | ENUM | INTERFACE | UNION
+
+directive @goField(
+	forceResolver: Boolean
+	name: String
+	omittable: Boolean
+	type: String
+) on INPUT_FIELD_DEFINITION | FIELD_DEFINITION
+
+input CartItemInput {
+  itemID: ID!
+  quantity: Int!
 }
 
 type Seller {
@@ -12,7 +25,8 @@ type Seller {
 type Item {
   id: ID!
   name: String!
-  in_stock: Int!
+  inStockText: String! @goField(forceResolver: true)
+  inCart: Int! @goField(forceResolver: true)
   seller: Seller! @goField(forceResolver: true)
   catalog: Catalog! @goField(forceResolver: true)
 }
@@ -21,10 +35,22 @@ type Catalog {
   id: ID!
   name: String!
   childs: [Catalog!]! @goField(forceResolver: true)
-  parent: Catalog! @goField(forceResolver: true)
-  items: [Item!]! @goField(forceResolver: true)
+  parent: Catalog @goField(forceResolver: true)
+  items(limit: Int = 3, offset: Int = 0): [Item!]! @goField(forceResolver: true)
+  itemsCount: Int! @goField(forceResolver: true)
+}
+
+type CartItem{
+  item: Item! @goField(forceResolver: true)
+  quantity: Int! @goField(forceResolver: true)
 }
 
 type Query {
-  
+  catalog(catalogID: ID!): Catalog! 
+  myCart: [CartItem!]!
+}
+
+type Mutation {
+  addToCart(input: CartItemInput!): [CartItem!]!
+  removeFromCart(input: CartItemInput!): [CartItem!]!
 }
