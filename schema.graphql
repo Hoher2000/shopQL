@@ -19,7 +19,7 @@ type Seller @goModel(model: "github.com/Hoher2000/shopQL/customModels.Seller") {
   id: ID!
   name: String!
   deals: Int!
-  items: [Item!]! @goField(forceResolver: true)
+  items(limit: Int = 3, offset: Int = 0): [Item!]! @goField(forceResolver: true)
 }
 
 type Item @goModel(model: "github.com/Hoher2000/shopQL/customModels.Item") {
@@ -29,6 +29,7 @@ type Item @goModel(model: "github.com/Hoher2000/shopQL/customModels.Item") {
   inCart: Int! @goField(forceResolver: true)
   seller: Seller! @goField(forceResolver: true)
   catalog: Catalog! @goField(forceResolver: true)
+  parent: Catalog! @goField(forceResolver: true)
 }
 
 type Catalog @goModel(model: "github.com/Hoher2000/shopQL/customModels.Catalog") {

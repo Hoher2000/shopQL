@@ -71,6 +71,7 @@ type ComplexityRoot struct {
 		InCart      func(childComplexity int) int
 		InStockText func(childComplexity int) int
 		Name        func(childComplexity int) int
+		Parent      func(childComplexity int) int
 		Seller      func(childComplexity int) int
 	}
 
@@ -88,7 +89,7 @@ type ComplexityRoot struct {
 	Seller struct {
 		Deals func(childComplexity int) int
 		ID    func(childComplexity int) int
-		Items func(childComplexity int) int
+		Items func(childComplexity int, limit *int, offset *int) int
 		Name  func(childComplexity int) int
 	}
 }
@@ -108,6 +109,7 @@ type ItemResolver interface {
 	InCart(ctx context.Context, obj *custom.Item) (int, error)
 	Seller(ctx context.Context, obj *custom.Item) (*custom.Seller, error)
 	Catalog(ctx context.Context, obj *custom.Item) (*custom.Catalog, error)
+	Parent(ctx context.Context, obj *custom.Item) (*custom.Catalog, error)
 }
 type MutationResolver interface {
 	AddToCart(ctx context.Context, in model.CartItemInput) ([]*custom.CartItem, error)
@@ -119,7 +121,7 @@ type QueryResolver interface {
 	MyCart(ctx context.Context) ([]*custom.CartItem, error)
 }
 type SellerResolver interface {
-	Items(ctx context.Context, obj *custom.Seller) ([]*custom.Item, error)
+	Items(ctx context.Context, obj *custom.Seller, limit *int, offset *int) ([]*custom.Item, error)
 }
 
 type executableSchema struct {
@@ -226,6 +228,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Item.Name(childComplexity), true
+	case "Item.parent":
+		if e.complexity.Item.Parent == nil {
+			break
+		}
+
+		return e.complexity.Item.Parent(childComplexity), true
 	case "Item.seller":
 		if e.complexity.Item.Seller == nil {
 			break
@@ -302,7 +310,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			break
 		}
 
-		return e.complexity.Seller.Items(childComplexity), true
+		args, err := ec.field_Seller_items_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Seller.Items(childComplexity, args["limit"].(*int), args["offset"].(*int)), true
 	case "Seller.name":
 		if e.complexity.Seller.Name == nil {
 			break
@@ -437,7 +450,7 @@ type Seller @goModel(model: "github.com/Hoher2000/shopQL/customModels.Seller") {
   id: ID!
   name: String!
   deals: Int!
-  items: [Item!]! @goField(forceResolver: true)
+  items(limit: Int = 3, offset: Int = 0): [Item!]! @goField(forceResolver: true)
 }
 
 type Item @goModel(model: "github.com/Hoher2000/shopQL/customModels.Item") {
@@ -447,6 +460,7 @@ type Item @goModel(model: "github.com/Hoher2000/shopQL/customModels.Item") {
   inCart: Int! @goField(forceResolver: true)
   seller: Seller! @goField(forceResolver: true)
   catalog: Catalog! @goField(forceResolver: true)
+  parent: Catalog! @goField(forceResolver: true)
 }
 
 type Catalog @goModel(model: "github.com/Hoher2000/shopQL/customModels.Catalog") {
@@ -552,6 +566,22 @@ func (ec *executionContext) field_Query___type_args(ctx context.Context, rawArgs
 	return args, nil
 }
 
+func (ec *executionContext) field_Seller_items_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "limit", ec.unmarshalOInt2ᚖint)
+	if err != nil {
+		return nil, err
+	}
+	args["limit"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "offset", ec.unmarshalOInt2ᚖint)
+	if err != nil {
+		return nil, err
+	}
+	args["offset"] = arg1
+	return args, nil
+}
+
 func (ec *executionContext) field___Directive_args_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -640,6 +670,8 @@ func (ec *executionContext) fieldContext_CartItem_item(_ context.Context, field 
 				return ec.fieldContext_Item_seller(ctx, field)
 			case "catalog":
 				return ec.fieldContext_Item_catalog(ctx, field)
+			case "parent":
+				return ec.fieldContext_Item_parent(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Item", field.Name)
 		},
@@ -857,6 +889,8 @@ func (ec *executionContext) fieldContext_Catalog_items(ctx context.Context, fiel
 				return ec.fieldContext_Item_seller(ctx, field)
 			case "catalog":
 				return ec.fieldContext_Item_catalog(ctx, field)
+			case "parent":
+				return ec.fieldContext_Item_parent(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Item", field.Name)
 		},
@@ -1076,6 +1110,49 @@ func (ec *executionContext) _Item_catalog(ctx context.Context, field graphql.Col
 }
 
 func (ec *executionContext) fieldContext_Item_catalog(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Item",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Catalog_id(ctx, field)
+			case "name":
+				return ec.fieldContext_Catalog_name(ctx, field)
+			case "childs":
+				return ec.fieldContext_Catalog_childs(ctx, field)
+			case "parent":
+				return ec.fieldContext_Catalog_parent(ctx, field)
+			case "items":
+				return ec.fieldContext_Catalog_items(ctx, field)
+			case "itemsCount":
+				return ec.fieldContext_Catalog_itemsCount(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Catalog", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Item_parent(ctx context.Context, field graphql.CollectedField, obj *custom.Item) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Item_parent,
+		func(ctx context.Context) (any, error) {
+			return ec.resolvers.Item().Parent(ctx, obj)
+		},
+		nil,
+		ec.marshalNCatalog2ᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐCatalog,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Item_parent(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "Item",
 		Field:      field,
@@ -1539,7 +1616,8 @@ func (ec *executionContext) _Seller_items(ctx context.Context, field graphql.Col
 		field,
 		ec.fieldContext_Seller_items,
 		func(ctx context.Context) (any, error) {
-			return ec.resolvers.Seller().Items(ctx, obj)
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Seller().Items(ctx, obj, fc.Args["limit"].(*int), fc.Args["offset"].(*int))
 		},
 		nil,
 		ec.marshalNItem2ᚕᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐItemᚄ,
@@ -1548,7 +1626,7 @@ func (ec *executionContext) _Seller_items(ctx context.Context, field graphql.Col
 	)
 }
 
-func (ec *executionContext) fieldContext_Seller_items(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_Seller_items(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "Seller",
 		Field:      field,
@@ -1568,9 +1646,22 @@ func (ec *executionContext) fieldContext_Seller_items(_ context.Context, field g
 				return ec.fieldContext_Item_seller(ctx, field)
 			case "catalog":
 				return ec.fieldContext_Item_catalog(ctx, field)
+			case "parent":
+				return ec.fieldContext_Item_parent(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Item", field.Name)
 		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Seller_items_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
 	}
 	return fc, nil
 }
@@ -3493,6 +3584,42 @@ func (ec *executionContext) _Item(ctx context.Context, sel ast.SelectionSet, obj
 					}
 				}()
 				res = ec._Item_catalog(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "parent":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Item_parent(ctx, field, obj)
 				if res == graphql.Null {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}

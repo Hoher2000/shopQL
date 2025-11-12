@@ -17,6 +17,7 @@ func (r *cartItemResolver) Item(ctx context.Context, obj *custom.CartItem) (*cus
 	return r.Shop.ItemsMap[obj.ItemID], nil
 }
 
+// Quantity is the resolver for the quantity field.
 func (r *cartItemResolver) Quantity(ctx context.Context, obj *custom.CartItem) (int, error) {
 	return obj.Quantity, nil
 }
@@ -85,7 +86,12 @@ func (r *itemResolver) Catalog(ctx context.Context, obj *custom.Item) (*custom.C
 	return r.Shop.CatalogsMap[obj.CatalogID], nil
 }
 
-// AddToCart is the resolver for the addToCart field.
+// Parent is the resolver for the parent field.
+func (r *itemResolver) Parent(ctx context.Context, obj *custom.Item) (*custom.Catalog, error) {
+	return r.Catalog(ctx, obj)
+}
+
+// AddToCart is the resolver for the AddToCart field.
 func (r *mutationResolver) AddToCart(ctx context.Context, in model.CartItemInput) ([]*custom.CartItem, error) {
 	id, err := strconv.Atoi(in.ItemID)
 	if err != nil {
@@ -95,7 +101,7 @@ func (r *mutationResolver) AddToCart(ctx context.Context, in model.CartItemInput
 	return r.Cart, nil
 }
 
-// RemoveFromCart is the resolver for the removeFromCart field.
+// RemoveFromCart is the resolver for the RemoveFromCart field.
 func (r *mutationResolver) RemoveFromCart(ctx context.Context, in model.CartItemInput) ([]*custom.CartItem, error) {
 	id, err := strconv.Atoi(in.ItemID)
 	if err != nil {
@@ -114,7 +120,7 @@ func (r *mutationResolver) RemoveFromCart(ctx context.Context, in model.CartItem
 	return r.Cart, nil
 }
 
-// Catalog is the resolver for the catalog field.
+// Catalog is the resolver for the Catalog field.
 func (r *queryResolver) Catalog(ctx context.Context, id string) (*custom.Catalog, error) {
 	idInt, err := strconv.Atoi(id)
 	if err != nil {
@@ -132,18 +138,18 @@ func (r *queryResolver) Seller(ctx context.Context, id string) (*custom.Seller, 
 	return r.Shop.SellersMap[idInt], nil
 }
 
-// MyCart is the resolver for the myCart field.
+// MyCart is the resolver for the MyCart field.
 func (r *queryResolver) MyCart(ctx context.Context) ([]*custom.CartItem, error) {
 	return r.Cart, nil
 }
 
 // Items is the resolver for the items field.
-func (r *sellerResolver) Items(ctx context.Context, obj *custom.Seller) ([]*custom.Item, error) {
+func (r *sellerResolver) Items(ctx context.Context, obj *custom.Seller, limit *int, offset *int) ([]*custom.Item, error) {
 	items := make([]*custom.Item, len(obj.ItemsID))
 	for i := range items {
 		items[i] = r.Shop.ItemsMap[obj.ItemsID[i]]
 	}
-	return items, nil
+	return items[min(*offset, len(items)):min(*offset+*limit, len(items))], nil
 }
 
 // CartItem returns CartItemResolver implementation.
@@ -170,15 +176,3 @@ type itemResolver struct{ *Resolver }
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
 type sellerResolver struct{ *Resolver }
-
-// !!! WARNING !!!
-// The code below was going to be deleted when updating resolvers. It has been copied here so you have
-// one last chance to move it out of harms way if you want. There are two reasons this happens:
-//  - When renaming or deleting a resolver the old code will be put in here. You can safely delete
-//    it when you're done.
-//  - You have helper methods in this file. Move them out to keep these resolver files clean.
-/*
-	func (r *sellerResolver) Deals(ctx context.Context, obj *custom.Seller) (int32, error) {
-	panic(fmt.Errorf("not implemented: Deals - deals"))
-}
-*/
