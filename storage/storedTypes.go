@@ -10,6 +10,7 @@ import (
 	custom "github.com/Hoher2000/shopQL/customModels"
 )
 
+// todo - add mutex
 type SchemShop struct {
 	CatalogsMap map[int]*custom.Catalog
 	ItemsMap    map[int]*custom.Item
