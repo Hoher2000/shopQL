@@ -17,3 +17,5 @@ init:
 gen: 
 	@echo "-- generatiog graphql files"
 	go run github.com/99designs/gqlgen generate --verbose --config ./gqlgen.yml
+
+

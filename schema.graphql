@@ -15,14 +15,14 @@ input CartItemInput {
   quantity: Int!
 }
 
-type Seller {
+type Seller @goModel(model: "github.com/Hoher2000/shopQL/customModels.Seller") {
   id: ID!
   name: String!
   deals: Int!
   items: [Item!]! @goField(forceResolver: true)
 }
 
-type Item {
+type Item @goModel(model: "github.com/Hoher2000/shopQL/customModels.Item") {
   id: ID!
   name: String!
   inStockText: String! @goField(forceResolver: true)
@@ -31,7 +31,7 @@ type Item {
   catalog: Catalog! @goField(forceResolver: true)
 }
 
-type Catalog {
+type Catalog @goModel(model: "github.com/Hoher2000/shopQL/customModels.Catalog") {
   id: ID!
   name: String!
   childs: [Catalog!]! @goField(forceResolver: true)
@@ -40,17 +40,18 @@ type Catalog {
   itemsCount: Int! @goField(forceResolver: true)
 }
 
-type CartItem{
+type CartItem @goModel(model: "github.com/Hoher2000/shopQL/customModels.CartItem") {
   item: Item! @goField(forceResolver: true)
   quantity: Int! @goField(forceResolver: true)
 }
 
 type Query {
-  catalog(catalogID: ID!): Catalog! 
-  myCart: [CartItem!]!
+  Catalog(ID: ID!): Catalog! 
+  Seller(ID: ID!): Seller!
+  MyCart: [CartItem!]!
 }
 
 type Mutation {
-  addToCart(input: CartItemInput!): [CartItem!]!
-  removeFromCart(input: CartItemInput!): [CartItem!]!
+  AddToCart(in: CartItemInput!): [CartItem!]!
+  RemoveFromCart(in: CartItemInput!): [CartItem!]!
 }
