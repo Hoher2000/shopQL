@@ -10,6 +10,8 @@ directive @goField(
 	type: String
 ) on INPUT_FIELD_DEFINITION | FIELD_DEFINITION
 
+directive @auth on FIELD_DEFINITION
+
 input CartItemInput {
   itemID: ID!
   quantity: Int!
@@ -26,7 +28,7 @@ type Item @goModel(model: "github.com/Hoher2000/shopQL/customModels.Item") {
   id: ID!
   name: String!
   inStockText: String! @goField(forceResolver: true)
-  inCart: Int! @goField(forceResolver: true)
+  inCart: Int! @goField(forceResolver: true) @auth
   seller: Seller! @goField(forceResolver: true)
   catalog: Catalog! @goField(forceResolver: true)
   parent: Catalog! @goField(forceResolver: true)
@@ -49,10 +51,10 @@ type CartItem @goModel(model: "github.com/Hoher2000/shopQL/customModels.CartItem
 type Query {
   Catalog(ID: ID!): Catalog! 
   Seller(ID: ID!): Seller!
-  MyCart: [CartItem!]!
+  MyCart: [CartItem!]! @auth
 }
 
 type Mutation {
-  AddToCart(in: CartItemInput!): [CartItem!]!
-  RemoveFromCart(in: CartItemInput!): [CartItem!]!
+  AddToCart(in: CartItemInput!): [CartItem!]! @auth
+  RemoveFromCart(in: CartItemInput!): [CartItem!]! @auth
 }
