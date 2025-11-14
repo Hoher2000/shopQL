@@ -32,7 +32,6 @@ func TokenFromCtx(ctx context.Context) string {
 func AuthMiddleWare(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Token ")
-		log.Println("token", token)
 		ctx := context.WithValue(r.Context(), tokenContextKey, token)
 		r = r.WithContext(ctx)
 		next.ServeHTTP(w, r)
@@ -89,7 +88,7 @@ func GetApp() http.Handler {
 		resp := map[string]map[string]any{
 			"body": {
 				"status":  "success",
-				"message": "user refistrated successfully",
+				"message": "user registrated successfully",
 				"token":   "12345678",
 			},
 		}

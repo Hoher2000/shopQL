@@ -6,6 +6,7 @@ package graph
 
 import (
 	"context"
+	"errors"
 	"strconv"
 
 	custom "github.com/Hoher2000/shopQL/customModels"
@@ -97,6 +98,16 @@ func (r *mutationResolver) AddToCart(ctx context.Context, in model.CartItemInput
 	if err != nil {
 		return nil, err
 	}
+	if in.Quantity > r.Shop.ItemsMap[id].InStock {
+		return nil, errors.New("not enough quantity")
+	}
+	r.Shop.ItemsMap[id].InStock -= in.Quantity
+	for i := range r.Cart {
+		if id == r.Cart[i].ItemID {
+			r.Cart[i].Quantity += in.Quantity
+			return r.Cart, nil
+		}
+	}
 	r.Cart = append(r.Cart, &custom.CartItem{ItemID: id, Quantity: in.Quantity})
 	return r.Cart, nil
 }
@@ -117,6 +128,7 @@ func (r *mutationResolver) RemoveFromCart(ctx context.Context, in model.CartItem
 			break
 		}
 	}
+	r.Shop.ItemsMap[id].InStock += in.Quantity
 	return r.Cart, nil
 }
 
