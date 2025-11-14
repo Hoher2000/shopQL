@@ -48,6 +48,7 @@ type ResolverRoot interface {
 }
 
 type DirectiveRoot struct {
+	Auth func(ctx context.Context, obj any, next graphql.Resolver) (res any, err error)
 }
 
 type ComplexityRoot struct {
@@ -441,6 +442,8 @@ directive @goField(
 	type: String
 ) on INPUT_FIELD_DEFINITION | FIELD_DEFINITION
 
+directive @auth on FIELD_DEFINITION
+
 input CartItemInput {
   itemID: ID!
   quantity: Int!
@@ -457,7 +460,7 @@ type Item @goModel(model: "github.com/Hoher2000/shopQL/customModels.Item") {
   id: ID!
   name: String!
   inStockText: String! @goField(forceResolver: true)
-  inCart: Int! @goField(forceResolver: true)
+  inCart: Int! @goField(forceResolver: true) @auth
   seller: Seller! @goField(forceResolver: true)
   catalog: Catalog! @goField(forceResolver: true)
   parent: Catalog! @goField(forceResolver: true)
@@ -478,14 +481,14 @@ type CartItem @goModel(model: "github.com/Hoher2000/shopQL/customModels.CartItem
 }
 
 type Query {
-  Catalog(ID: ID!): Catalog! 
+  Catalog(ID: ID!): Catalog 
   Seller(ID: ID!): Seller!
-  MyCart: [CartItem!]!
+  MyCart: [CartItem!]! @auth
 }
 
 type Mutation {
-  AddToCart(in: CartItemInput!): [CartItem!]!
-  RemoveFromCart(in: CartItemInput!): [CartItem!]!
+  AddToCart(in: CartItemInput!): [CartItem!]! @auth
+  RemoveFromCart(in: CartItemInput!): [CartItem!]! @auth
 }
 `, BuiltIn: false},
 }
@@ -1034,7 +1037,20 @@ func (ec *executionContext) _Item_inCart(ctx context.Context, field graphql.Coll
 		func(ctx context.Context) (any, error) {
 			return ec.resolvers.Item().InCart(ctx, obj)
 		},
-		nil,
+		func(ctx context.Context, next graphql.Resolver) graphql.Resolver {
+			directive0 := next
+
+			directive1 := func(ctx context.Context) (any, error) {
+				if ec.directives.Auth == nil {
+					var zeroVal int
+					return zeroVal, errors.New("directive auth is not implemented")
+				}
+				return ec.directives.Auth(ctx, obj, directive0)
+			}
+
+			next = directive1
+			return next
+		},
 		ec.marshalNInt2int,
 		true,
 		true,
@@ -1189,7 +1205,20 @@ func (ec *executionContext) _Mutation_AddToCart(ctx context.Context, field graph
 			fc := graphql.GetFieldContext(ctx)
 			return ec.resolvers.Mutation().AddToCart(ctx, fc.Args["in"].(model.CartItemInput))
 		},
-		nil,
+		func(ctx context.Context, next graphql.Resolver) graphql.Resolver {
+			directive0 := next
+
+			directive1 := func(ctx context.Context) (any, error) {
+				if ec.directives.Auth == nil {
+					var zeroVal []*custom.CartItem
+					return zeroVal, errors.New("directive auth is not implemented")
+				}
+				return ec.directives.Auth(ctx, nil, directive0)
+			}
+
+			next = directive1
+			return next
+		},
 		ec.marshalNCartItem2ᚕᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐCartItemᚄ,
 		true,
 		true,
@@ -1236,7 +1265,20 @@ func (ec *executionContext) _Mutation_RemoveFromCart(ctx context.Context, field 
 			fc := graphql.GetFieldContext(ctx)
 			return ec.resolvers.Mutation().RemoveFromCart(ctx, fc.Args["in"].(model.CartItemInput))
 		},
-		nil,
+		func(ctx context.Context, next graphql.Resolver) graphql.Resolver {
+			directive0 := next
+
+			directive1 := func(ctx context.Context) (any, error) {
+				if ec.directives.Auth == nil {
+					var zeroVal []*custom.CartItem
+					return zeroVal, errors.New("directive auth is not implemented")
+				}
+				return ec.directives.Auth(ctx, nil, directive0)
+			}
+
+			next = directive1
+			return next
+		},
 		ec.marshalNCartItem2ᚕᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐCartItemᚄ,
 		true,
 		true,
@@ -1284,9 +1326,9 @@ func (ec *executionContext) _Query_Catalog(ctx context.Context, field graphql.Co
 			return ec.resolvers.Query().Catalog(ctx, fc.Args["ID"].(string))
 		},
 		nil,
-		ec.marshalNCatalog2ᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐCatalog,
+		ec.marshalOCatalog2ᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐCatalog,
 		true,
-		true,
+		false,
 	)
 }
 
@@ -1388,7 +1430,20 @@ func (ec *executionContext) _Query_MyCart(ctx context.Context, field graphql.Col
 		func(ctx context.Context) (any, error) {
 			return ec.resolvers.Query().MyCart(ctx)
 		},
-		nil,
+		func(ctx context.Context, next graphql.Resolver) graphql.Resolver {
+			directive0 := next
+
+			directive1 := func(ctx context.Context) (any, error) {
+				if ec.directives.Auth == nil {
+					var zeroVal []*custom.CartItem
+					return zeroVal, errors.New("directive auth is not implemented")
+				}
+				return ec.directives.Auth(ctx, nil, directive0)
+			}
+
+			next = directive1
+			return next
+		},
 		ec.marshalNCartItem2ᚕᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐCartItemᚄ,
 		true,
 		true,
@@ -3747,16 +3802,13 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 		case "Catalog":
 			field := field
 
-			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
 				defer func() {
 					if r := recover(); r != nil {
 						ec.Error(ctx, ec.Recover(ctx, r))
 					}
 				}()
 				res = ec._Query_Catalog(ctx, field)
-				if res == graphql.Null {
-					atomic.AddUint32(&fs.Invalids, 1)
-				}
 				return res
 			}
 

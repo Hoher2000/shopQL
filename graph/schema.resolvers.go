@@ -13,7 +13,7 @@ import (
 )
 
 // Item is the resolver for the item field.
-func (r *cartItemResolver) Item(ctx context.Context, obj *custom.CartItem) (*custom.Item, error) {	
+func (r *cartItemResolver) Item(ctx context.Context, obj *custom.CartItem) (*custom.Item, error) {
 	return r.Shop.ItemsMap[obj.ItemID], nil
 }
 

@@ -563,6 +563,7 @@ func TestApp(t *testing.T) {
 			BodyRaw:        "{\"user\":{\"email\":\"{{EMAIL}}\", \"password\":\"{{PASSWORD}}\", \"username\":\"{{USERNAME}}\"}}",
 			ResponseStatus: 200,
 			CheckFunc: func(resp interface{}) error {
+				fmt.Println("CheckFunc got resp", resp)
 				val, err := lookup.LookupString(resp, "body.token")
 				if err != nil {
 					return err
