@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"log"
 	"net/http"
 	"strings"
@@ -72,10 +71,11 @@ func GetApp() http.Handler {
 		}
 	}()
 	shopDB := storage.NewMongoDB(cl)
+	userRepo := NewUserRepo(cl)
 	if err := shopDB.ParseShop("testdata.json"); err != nil {
 		log.Fatal(err)
 	}
-	config := graph.Config{Resolvers: &graph.Resolver{Shop: shopDB}}
+	config := graph.Config{Resolvers: &graph.Resolver{Shop: shopDB, User: userRepo}}
 	config.Directives.Auth = func(ctx context.Context, obj any, next graphql.Resolver) (res any, err error) {
 		token := TokenFromCtx(ctx)
 		if token == "" {
@@ -98,34 +98,8 @@ func GetApp() http.Handler {
 	srv.Use(extension.AutomaticPersistedQuery{
 		Cache: lru.New[string](100),
 	})
-
 	mux.Handle("/", playground.Handler("GraphQL playground", "/query"))
 	mux.Handle("/query", srv)
-	mux.HandleFunc("/register", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			log.Printf("registration - bad method. Want - POST, get - %v\n", r.Method)
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		data := map[string]map[string]string{}
-		if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
-			log.Printf("registration - invalid JSON body - %v\n", err)
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		defer r.Body.Close()
-		//w.WriteHeader(http.StatusOK)
-		w.Header().Add("Authorization", "Token "+"12345678")
-		w.Header().Set("Content-Type", "application/json")
-		resp := map[string]map[string]any{
-			"body": {
-				"status":  "success",
-				"message": "user registrated successfully",
-				"token":   "12345678",
-			},
-		}
-		json.NewEncoder(w).Encode(resp)
-		log.Printf("registration success - %v\n", data)
-	})
+	mux.HandleFunc("/register", userRepo.Reg)
 	return AuthMiddleWare(mux)
 }

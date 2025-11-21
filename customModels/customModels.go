@@ -10,13 +10,13 @@ type Cart struct {
 }
 
 type Catalog struct {
-	ID       int    `json:"id" bson:"_id"`
+	ID       int    `json:"id" bson:"_id, unique"`
 	Name     string `json:"name" bson:"name"`
 	ParentID int    `json:"parent,omitempty" bson:"parentID"`
 }
 
 type Item struct {
-	ID        int    `json:"id" bson:"_id"`
+	ID        int    `json:"id" bson:"_id, unique"`
 	Name      string `json:"name" bson:"name"`
 	InStock   int    `json:"inStock" bson:"inStock"`
 	InCart    int    `json:"inCart" bson:"inCart"`
@@ -27,16 +27,7 @@ type Item struct {
 }
 
 type Seller struct {
-	ID    int    `json:"id" bson:"_id"`
+	ID    int    `json:"id" bson:"_id, unique"`
 	Name  string `json:"name" bson:"name"`
 	Deals int    `json:"deals" bson:"deals"`
-}
-
-type User struct {
-	ID        int    `json:"id"`
-	FirstName string `json:"firstName"`
-	LastName  string `json:"lastName"`
-	Email     string `json:"email"`
-	Password  string `json:"password"`
-	Cart      *Cart  `json:"cart"`
 }
