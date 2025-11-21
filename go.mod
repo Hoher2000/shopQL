@@ -10,8 +10,10 @@ tool (
 require (
 	github.com/99designs/gqlgen v0.17.83
 	github.com/go-playground/validator/v10 v10.28.0
+	github.com/golang-jwt/jwt/v5 v5.2.3
 	github.com/mcuadros/go-lookup v0.0.0-20230627150232-5415b5b32da8
 	go.mongodb.org/mongo-driver/v2 v2.4.0
+	golang.org/x/crypto v0.43.0
 	gopkg.in/d4l3k/messagediff.v1 v1.2.1
 )
 
@@ -26,7 +28,6 @@ require (
 	github.com/xdg-go/scram v1.1.2 // indirect
 	github.com/xdg-go/stringprep v1.0.4 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
-	golang.org/x/crypto v0.43.0 // indirect
 )
 
 require (
@@ -67,7 +68,6 @@ require (
 	github.com/urfave/cli/v3 v3.6.0 // indirect
 	github.com/vektah/gqlparser/v2 v2.5.31
 	github.com/woodsbury/decimal128 v1.4.0 // indirect
-	go.mongodb.org/mongo-driver v1.17.6
 	golang.org/x/image v0.33.0 // indirect
 	golang.org/x/mod v0.30.0 // indirect
 	golang.org/x/sync v0.18.0 // indirect

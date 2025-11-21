@@ -10,6 +10,7 @@ import (
 
 	custom "github.com/Hoher2000/shopQL/customModels"
 	"github.com/go-playground/validator/v10"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/thanhpk/randstr"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -22,6 +23,7 @@ const (
 	catalogCollName = "catalogs"
 	itemsCollName   = "items"
 	sellerCollName  = "sellers"
+	mySigningKey    = "gpaphquerylanguage"
 )
 
 var userExistErr = errors.New("user with same login|email already exist")
@@ -102,16 +104,28 @@ func (u *UserRepo) Reg(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	w.Header().Add("Authorization", "Token "+"12345678")
+	claims := jwt.RegisteredClaims{
+		ID:        user.ID.Hex(),
+		IssuedAt:  jwt.NewNumericDate(time.Now()),
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(10 * 24 * time.Hour)),
+		Issuer:    "GQLShop",
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	ss, err := token.SignedString(mySigningKey)
+	if err != nil {
+		log.Printf("registration - signing token erroe - %v\n", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Add("Authorization", "Token "+ss)
 	w.Header().Set("Content-Type", "application/json")
 	resp := map[string]map[string]any{
 		"body": {
 			"status":  "success",
 			"message": "user is registrated successfully",
-			"token":   "12345678",
+			"token":   ss,
 		},
 	}
 	json.NewEncoder(w).Encode(resp)
-	log.Printf("registration success - %v\n", data)
+	log.Printf("registration success - %v\n", user.Name)
 }
