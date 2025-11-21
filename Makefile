@@ -1,9 +1,30 @@
 all:
 	go run .
 
+.PHONY: runmongo
+runmongo:
+	@echo "-- starting mongoDB"
+	docker-compose up -d
+
+.PHONY: statusmongo
+statusmongo:
+	docker-compose ps
+
+.PHONY: stopmongo
+stopmongo:
+	docker-compose down
+
+.PHONY: clearmongo
+clearmongo:
+	docker-compose down -v
+
 .PHONY: test
 test:
+	$(MAKE) runmongo
+	sleep 0.1
 	go test -v
+	$(MAKE) clearmongo
+	$(MAKE) statusmongo
 
 .PHONY: install
 install:

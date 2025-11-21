@@ -7,48 +7,49 @@ package graph
 import (
 	"context"
 	"errors"
+	"slices"
 	"strconv"
 
 	custom "github.com/Hoher2000/shopQL/customModels"
 	"github.com/Hoher2000/shopQL/graph/model"
 )
 
-// Item is the resolver for the item field.
-func (r *cartItemResolver) Item(ctx context.Context, obj *custom.CartItem) (*custom.Item, error) {
-	return r.Shop.ItemsMap[obj.ItemID], nil
+// Items is the resolver for the items field.
+func (r *cartResolver) Items(ctx context.Context, obj *custom.Cart) ([]*custom.OrderItem, error) {
+	return obj.CartItems, nil
 }
 
-// Quantity is the resolver for the quantity field.
-func (r *cartItemResolver) Quantity(ctx context.Context, obj *custom.CartItem) (int, error) {
-	return obj.Quantity, nil
+// Count is the resolver for the count field.
+func (r *cartResolver) Count(ctx context.Context, obj *custom.Cart) (int, error) {
+	cnt := 0
+	for _, item := range obj.CartItems {
+		cnt += item.Quantity
+	}
+	return cnt, nil
+}
+
+// Cost is the resolver for the cost field.
+func (r *cartResolver) Cost(ctx context.Context, obj *custom.Cart) (int, error) {
+	cost := 0
+	for _, item := range obj.CartItems {
+		cost += item.Quantity * r.Shop.ItemsMap[item.ItemID].Price
+	}
+	return cost, nil
 }
 
 // Childs is the resolver for the childs field.
 func (r *catalogResolver) Childs(ctx context.Context, obj *custom.Catalog) ([]*custom.Catalog, error) {
-	childs := make([]*custom.Catalog, len(obj.ChildsID))
-	for i := range childs {
-		childs[i] = r.Shop.CatalogsMap[obj.ChildsID[i]]
-	}
-	return childs, nil
+	return r.Shop.GetCatChilds(ctx, obj)
 }
 
 // Parent is the resolver for the parent field.
 func (r *catalogResolver) Parent(ctx context.Context, obj *custom.Catalog) (*custom.Catalog, error) {
-	return r.Shop.CatalogsMap[*obj.ParentID], nil
+	return r.Shop.GetCatParent(ctx, obj)
 }
 
 // Items is the resolver for the items field.
 func (r *catalogResolver) Items(ctx context.Context, obj *custom.Catalog, limit *int, offset *int) ([]*custom.Item, error) {
-	items := make([]*custom.Item, len(obj.ItemsID))
-	for i := range items {
-		items[i] = r.Shop.ItemsMap[obj.ItemsID[i]]
-	}
-	return items[min(*offset, len(items)):min(*offset+*limit, len(items))], nil
-}
-
-// ItemsCount is the resolver for the itemsCount field.
-func (r *catalogResolver) ItemsCount(ctx context.Context, obj *custom.Catalog) (int, error) {
-	return obj.ItemsCount, nil
+	return r.Shop.GetCatItems(ctx, obj, limit, offset)
 }
 
 // InStockText is the resolver for the inStockText field.
@@ -67,33 +68,26 @@ func (r *itemResolver) InStockText(ctx context.Context, obj *custom.Item) (strin
 
 // InCart is the resolver for the inCart field.
 func (r *itemResolver) InCart(ctx context.Context, obj *custom.Item) (int, error) {
-	cnt := 0
-	for _, item := range r.Cart {
-		if obj.ID == item.ItemID {
-			cnt = item.Quantity
-			break
-		}
-	}
-	return cnt, nil
+	return r.User.GetItemInCart(ctx, obj)
 }
 
 // Seller is the resolver for the seller field.
 func (r *itemResolver) Seller(ctx context.Context, obj *custom.Item) (*custom.Seller, error) {
-	return r.Shop.SellersMap[obj.SellerID], nil
+	return r.Shop.GetItemSeller(ctx, obj)
 }
 
 // Catalog is the resolver for the catalog field.
 func (r *itemResolver) Catalog(ctx context.Context, obj *custom.Item) (*custom.Catalog, error) {
-	return r.Shop.CatalogsMap[obj.CatalogID], nil
+	return r.Shop.GetItemCatalog(ctx, obj)
 }
 
 // Parent is the resolver for the parent field.
 func (r *itemResolver) Parent(ctx context.Context, obj *custom.Item) (*custom.Catalog, error) {
-	return r.Catalog(ctx, obj)
+	return r.Shop.GetItemCatalog(ctx, obj)
 }
 
 // AddToCart is the resolver for the AddToCart field.
-func (r *mutationResolver) AddToCart(ctx context.Context, in model.CartItemInput) ([]*custom.CartItem, error) {
+func (r *mutationResolver) AddToCart(ctx context.Context, in model.CartItemInput) (*custom.Cart, error) {
 	id, err := strconv.Atoi(in.ItemID)
 	if err != nil {
 		return nil, err
@@ -102,34 +96,38 @@ func (r *mutationResolver) AddToCart(ctx context.Context, in model.CartItemInput
 		return nil, errors.New("not enough quantity")
 	}
 	r.Shop.ItemsMap[id].InStock -= in.Quantity
-	for i := range r.Cart {
-		if id == r.Cart[i].ItemID {
-			r.Cart[i].Quantity += in.Quantity
-			return r.Cart, nil
+	for i := range r.UserCart.CartItems {
+		if id == r.UserCart.CartItems[i].ItemID {
+			r.UserCart.CartItems[i].Quantity += in.Quantity
+			return r.UserCart, nil
 		}
 	}
-	r.Cart = append(r.Cart, &custom.CartItem{ItemID: id, Quantity: in.Quantity})
-	return r.Cart, nil
+	r.UserCart.CartItems = append(r.UserCart.CartItems, &custom.OrderItem{ItemID: id, Quantity: in.Quantity})
+	return r.UserCart, nil
 }
 
 // RemoveFromCart is the resolver for the RemoveFromCart field.
-func (r *mutationResolver) RemoveFromCart(ctx context.Context, in model.CartItemInput) ([]*custom.CartItem, error) {
+func (r *mutationResolver) RemoveFromCart(ctx context.Context, in model.CartItemInput) (*custom.Cart, error) {
 	id, err := strconv.Atoi(in.ItemID)
 	if err != nil {
 		return nil, err
 	}
-
-	for i := range r.Cart {
-		if r.Cart[i].ItemID == id {
-			r.Cart[i].Quantity -= in.Quantity
-			if r.Cart[i].Quantity < 1 {
-				r.Cart = append(r.Cart[:i], r.Cart[i+1:]...)
+	for i := range r.UserCart.CartItems {
+		if r.UserCart.CartItems[i].ItemID == id {
+			r.UserCart.CartItems[i].Quantity -= in.Quantity
+			if r.UserCart.CartItems[i].Quantity < 1 {
+				r.UserCart.CartItems = append(r.UserCart.CartItems[:i], r.UserCart.CartItems[i+1:]...)
 			}
 			break
 		}
 	}
 	r.Shop.ItemsMap[id].InStock += in.Quantity
-	return r.Cart, nil
+	return r.UserCart, nil
+}
+
+// Item is the resolver for the item field.
+func (r *orderItemResolver) Item(ctx context.Context, obj *custom.OrderItem) (*custom.Item, error) {
+	return r.Shop.ItemsMap[obj.ItemID], nil
 }
 
 // Catalog is the resolver for the Catalog field.
@@ -151,21 +149,26 @@ func (r *queryResolver) Seller(ctx context.Context, id string) (*custom.Seller, 
 }
 
 // MyCart is the resolver for the MyCart field.
-func (r *queryResolver) MyCart(ctx context.Context) ([]*custom.CartItem, error) {
-	return r.Cart, nil
+func (r *queryResolver) MyCart(ctx context.Context) (*custom.Cart, error) {
+	return r.UserCart, nil
 }
 
 // Items is the resolver for the items field.
 func (r *sellerResolver) Items(ctx context.Context, obj *custom.Seller, limit *int, offset *int) ([]*custom.Item, error) {
-	items := make([]*custom.Item, len(obj.ItemsID))
-	for i := range items {
-		items[i] = r.Shop.ItemsMap[obj.ItemsID[i]]
+	items := make([]*custom.Item, 0)
+	for i := range r.Shop.ItemsMap {
+		if r.Shop.ItemsMap[i].SellerID == obj.ID {
+			items = append(items, r.Shop.ItemsMap[i])
+		}
 	}
+	slices.SortFunc(items, func(a, b *custom.Item) int {
+		return a.ID - b.ID
+	})
 	return items[min(*offset, len(items)):min(*offset+*limit, len(items))], nil
 }
 
-// CartItem returns CartItemResolver implementation.
-func (r *Resolver) CartItem() CartItemResolver { return &cartItemResolver{r} }
+// Cart returns CartResolver implementation.
+func (r *Resolver) Cart() CartResolver { return &cartResolver{r} }
 
 // Catalog returns CatalogResolver implementation.
 func (r *Resolver) Catalog() CatalogResolver { return &catalogResolver{r} }
@@ -176,15 +179,19 @@ func (r *Resolver) Item() ItemResolver { return &itemResolver{r} }
 // Mutation returns MutationResolver implementation.
 func (r *Resolver) Mutation() MutationResolver { return &mutationResolver{r} }
 
+// OrderItem returns OrderItemResolver implementation.
+func (r *Resolver) OrderItem() OrderItemResolver { return &orderItemResolver{r} }
+
 // Query returns QueryResolver implementation.
 func (r *Resolver) Query() QueryResolver { return &queryResolver{r} }
 
 // Seller returns SellerResolver implementation.
 func (r *Resolver) Seller() SellerResolver { return &sellerResolver{r} }
 
-type cartItemResolver struct{ *Resolver }
+type cartResolver struct{ *Resolver }
 type catalogResolver struct{ *Resolver }
 type itemResolver struct{ *Resolver }
 type mutationResolver struct{ *Resolver }
+type orderItemResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
 type sellerResolver struct{ *Resolver }

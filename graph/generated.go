@@ -39,10 +39,11 @@ type Config struct {
 }
 
 type ResolverRoot interface {
-	CartItem() CartItemResolver
+	Cart() CartResolver
 	Catalog() CatalogResolver
 	Item() ItemResolver
 	Mutation() MutationResolver
+	OrderItem() OrderItemResolver
 	Query() QueryResolver
 	Seller() SellerResolver
 }
@@ -52,18 +53,18 @@ type DirectiveRoot struct {
 }
 
 type ComplexityRoot struct {
-	CartItem struct {
-		Item     func(childComplexity int) int
-		Quantity func(childComplexity int) int
+	Cart struct {
+		Cost  func(childComplexity int) int
+		Count func(childComplexity int) int
+		Items func(childComplexity int) int
 	}
 
 	Catalog struct {
-		Childs     func(childComplexity int) int
-		ID         func(childComplexity int) int
-		Items      func(childComplexity int, limit *int, offset *int) int
-		ItemsCount func(childComplexity int) int
-		Name       func(childComplexity int) int
-		Parent     func(childComplexity int) int
+		Childs func(childComplexity int) int
+		ID     func(childComplexity int) int
+		Items  func(childComplexity int, limit *int, offset *int) int
+		Name   func(childComplexity int) int
+		Parent func(childComplexity int) int
 	}
 
 	Item struct {
@@ -73,12 +74,18 @@ type ComplexityRoot struct {
 		InStockText func(childComplexity int) int
 		Name        func(childComplexity int) int
 		Parent      func(childComplexity int) int
+		Price       func(childComplexity int) int
 		Seller      func(childComplexity int) int
 	}
 
 	Mutation struct {
 		AddToCart      func(childComplexity int, in model.CartItemInput) int
 		RemoveFromCart func(childComplexity int, in model.CartItemInput) int
+	}
+
+	OrderItem struct {
+		Item     func(childComplexity int) int
+		Quantity func(childComplexity int) int
 	}
 
 	Query struct {
@@ -95,15 +102,15 @@ type ComplexityRoot struct {
 	}
 }
 
-type CartItemResolver interface {
-	Item(ctx context.Context, obj *custom.CartItem) (*custom.Item, error)
-	Quantity(ctx context.Context, obj *custom.CartItem) (int, error)
+type CartResolver interface {
+	Items(ctx context.Context, obj *custom.Cart) ([]*custom.OrderItem, error)
+	Count(ctx context.Context, obj *custom.Cart) (int, error)
+	Cost(ctx context.Context, obj *custom.Cart) (int, error)
 }
 type CatalogResolver interface {
 	Childs(ctx context.Context, obj *custom.Catalog) ([]*custom.Catalog, error)
 	Parent(ctx context.Context, obj *custom.Catalog) (*custom.Catalog, error)
 	Items(ctx context.Context, obj *custom.Catalog, limit *int, offset *int) ([]*custom.Item, error)
-	ItemsCount(ctx context.Context, obj *custom.Catalog) (int, error)
 }
 type ItemResolver interface {
 	InStockText(ctx context.Context, obj *custom.Item) (string, error)
@@ -113,13 +120,16 @@ type ItemResolver interface {
 	Parent(ctx context.Context, obj *custom.Item) (*custom.Catalog, error)
 }
 type MutationResolver interface {
-	AddToCart(ctx context.Context, in model.CartItemInput) ([]*custom.CartItem, error)
-	RemoveFromCart(ctx context.Context, in model.CartItemInput) ([]*custom.CartItem, error)
+	AddToCart(ctx context.Context, in model.CartItemInput) (*custom.Cart, error)
+	RemoveFromCart(ctx context.Context, in model.CartItemInput) (*custom.Cart, error)
+}
+type OrderItemResolver interface {
+	Item(ctx context.Context, obj *custom.OrderItem) (*custom.Item, error)
 }
 type QueryResolver interface {
 	Catalog(ctx context.Context, id string) (*custom.Catalog, error)
 	Seller(ctx context.Context, id string) (*custom.Seller, error)
-	MyCart(ctx context.Context) ([]*custom.CartItem, error)
+	MyCart(ctx context.Context) (*custom.Cart, error)
 }
 type SellerResolver interface {
 	Items(ctx context.Context, obj *custom.Seller, limit *int, offset *int) ([]*custom.Item, error)
@@ -144,18 +154,24 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 	_ = ec
 	switch typeName + "." + field {
 
-	case "CartItem.item":
-		if e.complexity.CartItem.Item == nil {
+	case "Cart.cost":
+		if e.complexity.Cart.Cost == nil {
 			break
 		}
 
-		return e.complexity.CartItem.Item(childComplexity), true
-	case "CartItem.quantity":
-		if e.complexity.CartItem.Quantity == nil {
+		return e.complexity.Cart.Cost(childComplexity), true
+	case "Cart.count":
+		if e.complexity.Cart.Count == nil {
 			break
 		}
 
-		return e.complexity.CartItem.Quantity(childComplexity), true
+		return e.complexity.Cart.Count(childComplexity), true
+	case "Cart.items":
+		if e.complexity.Cart.Items == nil {
+			break
+		}
+
+		return e.complexity.Cart.Items(childComplexity), true
 
 	case "Catalog.childs":
 		if e.complexity.Catalog.Childs == nil {
@@ -180,12 +196,6 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Catalog.Items(childComplexity, args["limit"].(*int), args["offset"].(*int)), true
-	case "Catalog.itemsCount":
-		if e.complexity.Catalog.ItemsCount == nil {
-			break
-		}
-
-		return e.complexity.Catalog.ItemsCount(childComplexity), true
 	case "Catalog.name":
 		if e.complexity.Catalog.Name == nil {
 			break
@@ -235,6 +245,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Item.Parent(childComplexity), true
+	case "Item.price":
+		if e.complexity.Item.Price == nil {
+			break
+		}
+
+		return e.complexity.Item.Price(childComplexity), true
 	case "Item.seller":
 		if e.complexity.Item.Seller == nil {
 			break
@@ -264,6 +280,19 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Mutation.RemoveFromCart(childComplexity, args["in"].(model.CartItemInput)), true
+
+	case "OrderItem.item":
+		if e.complexity.OrderItem.Item == nil {
+			break
+		}
+
+		return e.complexity.OrderItem.Item(childComplexity), true
+	case "OrderItem.quantity":
+		if e.complexity.OrderItem.Quantity == nil {
+			break
+		}
+
+		return e.complexity.OrderItem.Quantity(childComplexity), true
 
 	case "Query.Catalog":
 		if e.complexity.Query.Catalog == nil {
@@ -464,6 +493,7 @@ type Item @goModel(model: "github.com/Hoher2000/shopQL/customModels.Item") {
   seller: Seller! @goField(forceResolver: true)
   catalog: Catalog! @goField(forceResolver: true)
   parent: Catalog! @goField(forceResolver: true)
+  price: Int!
 }
 
 type Catalog @goModel(model: "github.com/Hoher2000/shopQL/customModels.Catalog") {
@@ -472,23 +502,29 @@ type Catalog @goModel(model: "github.com/Hoher2000/shopQL/customModels.Catalog")
   childs: [Catalog!]! @goField(forceResolver: true)
   parent: Catalog @goField(forceResolver: true)
   items(limit: Int = 3, offset: Int = 0): [Item!]! @goField(forceResolver: true)
-  itemsCount: Int! @goField(forceResolver: true)
+  #itemsCount: Int! @goField(forceResolver: true)
 }
 
-type CartItem @goModel(model: "github.com/Hoher2000/shopQL/customModels.CartItem") {
+type OrderItem @goModel(model: "github.com/Hoher2000/shopQL/customModels.OrderItem") {
   item: Item! @goField(forceResolver: true)
-  quantity: Int! @goField(forceResolver: true)
+  quantity: Int! #@goField(forceResolver: true)
+}
+
+type Cart @goModel(model: "github.com/Hoher2000/shopQL/customModels.Cart") {
+   items: [OrderItem!]! 
+   count: Int! @goField(forceResolver: true)
+   cost: Int! @goField(forceResolver: true)
 }
 
 type Query {
   Catalog(ID: ID!): Catalog 
   Seller(ID: ID!): Seller!
-  MyCart: [CartItem!]! @auth
+  MyCart: Cart! @auth
 }
 
 type Mutation {
-  AddToCart(in: CartItemInput!): [CartItem!]! @auth
-  RemoveFromCart(in: CartItemInput!): [CartItem!]! @auth
+  AddToCart(in: CartItemInput!): Cart! @auth
+  RemoveFromCart(in: CartItemInput!): Cart! @auth
 }
 `, BuiltIn: false},
 }
@@ -637,59 +673,49 @@ func (ec *executionContext) field___Type_fields_args(ctx context.Context, rawArg
 
 // region    **************************** field.gotpl *****************************
 
-func (ec *executionContext) _CartItem_item(ctx context.Context, field graphql.CollectedField, obj *custom.CartItem) (ret graphql.Marshaler) {
+func (ec *executionContext) _Cart_items(ctx context.Context, field graphql.CollectedField, obj *custom.Cart) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
 		ec.OperationContext,
 		field,
-		ec.fieldContext_CartItem_item,
+		ec.fieldContext_Cart_items,
 		func(ctx context.Context) (any, error) {
-			return ec.resolvers.CartItem().Item(ctx, obj)
+			return ec.resolvers.Cart().Items(ctx, obj)
 		},
 		nil,
-		ec.marshalNItem2ᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐItem,
+		ec.marshalNOrderItem2ᚕᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐOrderItemᚄ,
 		true,
 		true,
 	)
 }
 
-func (ec *executionContext) fieldContext_CartItem_item(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_Cart_items(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
-		Object:     "CartItem",
+		Object:     "Cart",
 		Field:      field,
 		IsMethod:   true,
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
-			case "id":
-				return ec.fieldContext_Item_id(ctx, field)
-			case "name":
-				return ec.fieldContext_Item_name(ctx, field)
-			case "inStockText":
-				return ec.fieldContext_Item_inStockText(ctx, field)
-			case "inCart":
-				return ec.fieldContext_Item_inCart(ctx, field)
-			case "seller":
-				return ec.fieldContext_Item_seller(ctx, field)
-			case "catalog":
-				return ec.fieldContext_Item_catalog(ctx, field)
-			case "parent":
-				return ec.fieldContext_Item_parent(ctx, field)
+			case "item":
+				return ec.fieldContext_OrderItem_item(ctx, field)
+			case "quantity":
+				return ec.fieldContext_OrderItem_quantity(ctx, field)
 			}
-			return nil, fmt.Errorf("no field named %q was found under type Item", field.Name)
+			return nil, fmt.Errorf("no field named %q was found under type OrderItem", field.Name)
 		},
 	}
 	return fc, nil
 }
 
-func (ec *executionContext) _CartItem_quantity(ctx context.Context, field graphql.CollectedField, obj *custom.CartItem) (ret graphql.Marshaler) {
+func (ec *executionContext) _Cart_count(ctx context.Context, field graphql.CollectedField, obj *custom.Cart) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
 		ec.OperationContext,
 		field,
-		ec.fieldContext_CartItem_quantity,
+		ec.fieldContext_Cart_count,
 		func(ctx context.Context) (any, error) {
-			return ec.resolvers.CartItem().Quantity(ctx, obj)
+			return ec.resolvers.Cart().Count(ctx, obj)
 		},
 		nil,
 		ec.marshalNInt2int,
@@ -698,9 +724,38 @@ func (ec *executionContext) _CartItem_quantity(ctx context.Context, field graphq
 	)
 }
 
-func (ec *executionContext) fieldContext_CartItem_quantity(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_Cart_count(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
-		Object:     "CartItem",
+		Object:     "Cart",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Cart_cost(ctx context.Context, field graphql.CollectedField, obj *custom.Cart) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Cart_cost,
+		func(ctx context.Context) (any, error) {
+			return ec.resolvers.Cart().Cost(ctx, obj)
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Cart_cost(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Cart",
 		Field:      field,
 		IsMethod:   true,
 		IsResolver: true,
@@ -803,8 +858,6 @@ func (ec *executionContext) fieldContext_Catalog_childs(_ context.Context, field
 				return ec.fieldContext_Catalog_parent(ctx, field)
 			case "items":
 				return ec.fieldContext_Catalog_items(ctx, field)
-			case "itemsCount":
-				return ec.fieldContext_Catalog_itemsCount(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Catalog", field.Name)
 		},
@@ -846,8 +899,6 @@ func (ec *executionContext) fieldContext_Catalog_parent(_ context.Context, field
 				return ec.fieldContext_Catalog_parent(ctx, field)
 			case "items":
 				return ec.fieldContext_Catalog_items(ctx, field)
-			case "itemsCount":
-				return ec.fieldContext_Catalog_itemsCount(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Catalog", field.Name)
 		},
@@ -894,6 +945,8 @@ func (ec *executionContext) fieldContext_Catalog_items(ctx context.Context, fiel
 				return ec.fieldContext_Item_catalog(ctx, field)
 			case "parent":
 				return ec.fieldContext_Item_parent(ctx, field)
+			case "price":
+				return ec.fieldContext_Item_price(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Item", field.Name)
 		},
@@ -908,35 +961,6 @@ func (ec *executionContext) fieldContext_Catalog_items(ctx context.Context, fiel
 	if fc.Args, err = ec.field_Catalog_items_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Catalog_itemsCount(ctx context.Context, field graphql.CollectedField, obj *custom.Catalog) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		ec.fieldContext_Catalog_itemsCount,
-		func(ctx context.Context) (any, error) {
-			return ec.resolvers.Catalog().ItemsCount(ctx, obj)
-		},
-		nil,
-		ec.marshalNInt2int,
-		true,
-		true,
-	)
-}
-
-func (ec *executionContext) fieldContext_Catalog_itemsCount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Catalog",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type Int does not have child fields")
-		},
 	}
 	return fc, nil
 }
@@ -1143,8 +1167,6 @@ func (ec *executionContext) fieldContext_Item_catalog(_ context.Context, field g
 				return ec.fieldContext_Catalog_parent(ctx, field)
 			case "items":
 				return ec.fieldContext_Catalog_items(ctx, field)
-			case "itemsCount":
-				return ec.fieldContext_Catalog_itemsCount(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Catalog", field.Name)
 		},
@@ -1186,10 +1208,37 @@ func (ec *executionContext) fieldContext_Item_parent(_ context.Context, field gr
 				return ec.fieldContext_Catalog_parent(ctx, field)
 			case "items":
 				return ec.fieldContext_Catalog_items(ctx, field)
-			case "itemsCount":
-				return ec.fieldContext_Catalog_itemsCount(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Catalog", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Item_price(ctx context.Context, field graphql.CollectedField, obj *custom.Item) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Item_price,
+		func(ctx context.Context) (any, error) {
+			return obj.Price, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Item_price(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Item",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
 		},
 	}
 	return fc, nil
@@ -1210,7 +1259,7 @@ func (ec *executionContext) _Mutation_AddToCart(ctx context.Context, field graph
 
 			directive1 := func(ctx context.Context) (any, error) {
 				if ec.directives.Auth == nil {
-					var zeroVal []*custom.CartItem
+					var zeroVal *custom.Cart
 					return zeroVal, errors.New("directive auth is not implemented")
 				}
 				return ec.directives.Auth(ctx, nil, directive0)
@@ -1219,7 +1268,7 @@ func (ec *executionContext) _Mutation_AddToCart(ctx context.Context, field graph
 			next = directive1
 			return next
 		},
-		ec.marshalNCartItem2ᚕᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐCartItemᚄ,
+		ec.marshalNCart2ᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐCart,
 		true,
 		true,
 	)
@@ -1233,12 +1282,14 @@ func (ec *executionContext) fieldContext_Mutation_AddToCart(ctx context.Context,
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
-			case "item":
-				return ec.fieldContext_CartItem_item(ctx, field)
-			case "quantity":
-				return ec.fieldContext_CartItem_quantity(ctx, field)
+			case "items":
+				return ec.fieldContext_Cart_items(ctx, field)
+			case "count":
+				return ec.fieldContext_Cart_count(ctx, field)
+			case "cost":
+				return ec.fieldContext_Cart_cost(ctx, field)
 			}
-			return nil, fmt.Errorf("no field named %q was found under type CartItem", field.Name)
+			return nil, fmt.Errorf("no field named %q was found under type Cart", field.Name)
 		},
 	}
 	defer func() {
@@ -1270,7 +1321,7 @@ func (ec *executionContext) _Mutation_RemoveFromCart(ctx context.Context, field 
 
 			directive1 := func(ctx context.Context) (any, error) {
 				if ec.directives.Auth == nil {
-					var zeroVal []*custom.CartItem
+					var zeroVal *custom.Cart
 					return zeroVal, errors.New("directive auth is not implemented")
 				}
 				return ec.directives.Auth(ctx, nil, directive0)
@@ -1279,7 +1330,7 @@ func (ec *executionContext) _Mutation_RemoveFromCart(ctx context.Context, field 
 			next = directive1
 			return next
 		},
-		ec.marshalNCartItem2ᚕᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐCartItemᚄ,
+		ec.marshalNCart2ᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐCart,
 		true,
 		true,
 	)
@@ -1293,12 +1344,14 @@ func (ec *executionContext) fieldContext_Mutation_RemoveFromCart(ctx context.Con
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
-			case "item":
-				return ec.fieldContext_CartItem_item(ctx, field)
-			case "quantity":
-				return ec.fieldContext_CartItem_quantity(ctx, field)
+			case "items":
+				return ec.fieldContext_Cart_items(ctx, field)
+			case "count":
+				return ec.fieldContext_Cart_count(ctx, field)
+			case "cost":
+				return ec.fieldContext_Cart_cost(ctx, field)
 			}
-			return nil, fmt.Errorf("no field named %q was found under type CartItem", field.Name)
+			return nil, fmt.Errorf("no field named %q was found under type Cart", field.Name)
 		},
 	}
 	defer func() {
@@ -1311,6 +1364,82 @@ func (ec *executionContext) fieldContext_Mutation_RemoveFromCart(ctx context.Con
 	if fc.Args, err = ec.field_Mutation_RemoveFromCart_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _OrderItem_item(ctx context.Context, field graphql.CollectedField, obj *custom.OrderItem) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_OrderItem_item,
+		func(ctx context.Context) (any, error) {
+			return ec.resolvers.OrderItem().Item(ctx, obj)
+		},
+		nil,
+		ec.marshalNItem2ᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐItem,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_OrderItem_item(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "OrderItem",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Item_id(ctx, field)
+			case "name":
+				return ec.fieldContext_Item_name(ctx, field)
+			case "inStockText":
+				return ec.fieldContext_Item_inStockText(ctx, field)
+			case "inCart":
+				return ec.fieldContext_Item_inCart(ctx, field)
+			case "seller":
+				return ec.fieldContext_Item_seller(ctx, field)
+			case "catalog":
+				return ec.fieldContext_Item_catalog(ctx, field)
+			case "parent":
+				return ec.fieldContext_Item_parent(ctx, field)
+			case "price":
+				return ec.fieldContext_Item_price(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Item", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _OrderItem_quantity(ctx context.Context, field graphql.CollectedField, obj *custom.OrderItem) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_OrderItem_quantity,
+		func(ctx context.Context) (any, error) {
+			return obj.Quantity, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_OrderItem_quantity(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "OrderItem",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
 	}
 	return fc, nil
 }
@@ -1350,8 +1479,6 @@ func (ec *executionContext) fieldContext_Query_Catalog(ctx context.Context, fiel
 				return ec.fieldContext_Catalog_parent(ctx, field)
 			case "items":
 				return ec.fieldContext_Catalog_items(ctx, field)
-			case "itemsCount":
-				return ec.fieldContext_Catalog_itemsCount(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Catalog", field.Name)
 		},
@@ -1435,7 +1562,7 @@ func (ec *executionContext) _Query_MyCart(ctx context.Context, field graphql.Col
 
 			directive1 := func(ctx context.Context) (any, error) {
 				if ec.directives.Auth == nil {
-					var zeroVal []*custom.CartItem
+					var zeroVal *custom.Cart
 					return zeroVal, errors.New("directive auth is not implemented")
 				}
 				return ec.directives.Auth(ctx, nil, directive0)
@@ -1444,7 +1571,7 @@ func (ec *executionContext) _Query_MyCart(ctx context.Context, field graphql.Col
 			next = directive1
 			return next
 		},
-		ec.marshalNCartItem2ᚕᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐCartItemᚄ,
+		ec.marshalNCart2ᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐCart,
 		true,
 		true,
 	)
@@ -1458,12 +1585,14 @@ func (ec *executionContext) fieldContext_Query_MyCart(_ context.Context, field g
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
-			case "item":
-				return ec.fieldContext_CartItem_item(ctx, field)
-			case "quantity":
-				return ec.fieldContext_CartItem_quantity(ctx, field)
+			case "items":
+				return ec.fieldContext_Cart_items(ctx, field)
+			case "count":
+				return ec.fieldContext_Cart_count(ctx, field)
+			case "cost":
+				return ec.fieldContext_Cart_cost(ctx, field)
 			}
-			return nil, fmt.Errorf("no field named %q was found under type CartItem", field.Name)
+			return nil, fmt.Errorf("no field named %q was found under type Cart", field.Name)
 		},
 	}
 	return fc, nil
@@ -1703,6 +1832,8 @@ func (ec *executionContext) fieldContext_Seller_items(ctx context.Context, field
 				return ec.fieldContext_Item_catalog(ctx, field)
 			case "parent":
 				return ec.fieldContext_Item_parent(ctx, field)
+			case "price":
+				return ec.fieldContext_Item_price(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Item", field.Name)
 		},
@@ -3209,18 +3340,18 @@ func (ec *executionContext) unmarshalInputCartItemInput(ctx context.Context, obj
 
 // region    **************************** object.gotpl ****************************
 
-var cartItemImplementors = []string{"CartItem"}
+var cartImplementors = []string{"Cart"}
 
-func (ec *executionContext) _CartItem(ctx context.Context, sel ast.SelectionSet, obj *custom.CartItem) graphql.Marshaler {
-	fields := graphql.CollectFields(ec.OperationContext, sel, cartItemImplementors)
+func (ec *executionContext) _Cart(ctx context.Context, sel ast.SelectionSet, obj *custom.Cart) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, cartImplementors)
 
 	out := graphql.NewFieldSet(fields)
 	deferred := make(map[string]*graphql.FieldSet)
 	for i, field := range fields {
 		switch field.Name {
 		case "__typename":
-			out.Values[i] = graphql.MarshalString("CartItem")
-		case "item":
+			out.Values[i] = graphql.MarshalString("Cart")
+		case "items":
 			field := field
 
 			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
@@ -3229,7 +3360,7 @@ func (ec *executionContext) _CartItem(ctx context.Context, sel ast.SelectionSet,
 						ec.Error(ctx, ec.Recover(ctx, r))
 					}
 				}()
-				res = ec._CartItem_item(ctx, field, obj)
+				res = ec._Cart_items(ctx, field, obj)
 				if res == graphql.Null {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}
@@ -3256,7 +3387,7 @@ func (ec *executionContext) _CartItem(ctx context.Context, sel ast.SelectionSet,
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
-		case "quantity":
+		case "count":
 			field := field
 
 			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
@@ -3265,7 +3396,43 @@ func (ec *executionContext) _CartItem(ctx context.Context, sel ast.SelectionSet,
 						ec.Error(ctx, ec.Recover(ctx, r))
 					}
 				}()
-				res = ec._CartItem_quantity(ctx, field, obj)
+				res = ec._Cart_count(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "cost":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Cart_cost(ctx, field, obj)
 				if res == graphql.Null {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}
@@ -3415,42 +3582,6 @@ func (ec *executionContext) _Catalog(ctx context.Context, sel ast.SelectionSet, 
 					}
 				}()
 				res = ec._Catalog_items(ctx, field, obj)
-				if res == graphql.Null {
-					atomic.AddUint32(&fs.Invalids, 1)
-				}
-				return res
-			}
-
-			if field.Deferrable != nil {
-				dfs, ok := deferred[field.Deferrable.Label]
-				di := 0
-				if ok {
-					dfs.AddField(field)
-					di = len(dfs.Values) - 1
-				} else {
-					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
-					deferred[field.Deferrable.Label] = dfs
-				}
-				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
-					return innerFunc(ctx, dfs)
-				})
-
-				// don't run the out.Concurrently() call below
-				out.Values[i] = graphql.Null
-				continue
-			}
-
-			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
-		case "itemsCount":
-			field := field
-
-			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
-				defer func() {
-					if r := recover(); r != nil {
-						ec.Error(ctx, ec.Recover(ctx, r))
-					}
-				}()
-				res = ec._Catalog_itemsCount(ctx, field, obj)
 				if res == graphql.Null {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}
@@ -3701,6 +3832,11 @@ func (ec *executionContext) _Item(ctx context.Context, sel ast.SelectionSet, obj
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "price":
+			out.Values[i] = ec._Item_price(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -3756,6 +3892,81 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var orderItemImplementors = []string{"OrderItem"}
+
+func (ec *executionContext) _OrderItem(ctx context.Context, sel ast.SelectionSet, obj *custom.OrderItem) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, orderItemImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("OrderItem")
+		case "item":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._OrderItem_item(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "quantity":
+			out.Values[i] = ec._OrderItem_quantity(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
@@ -4329,58 +4540,18 @@ func (ec *executionContext) marshalNBoolean2bool(ctx context.Context, sel ast.Se
 	return res
 }
 
-func (ec *executionContext) marshalNCartItem2ᚕᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐCartItemᚄ(ctx context.Context, sel ast.SelectionSet, v []*custom.CartItem) graphql.Marshaler {
-	ret := make(graphql.Array, len(v))
-	var wg sync.WaitGroup
-	isLen1 := len(v) == 1
-	if !isLen1 {
-		wg.Add(len(v))
-	}
-	for i := range v {
-		i := i
-		fc := &graphql.FieldContext{
-			Index:  &i,
-			Result: &v[i],
-		}
-		ctx := graphql.WithFieldContext(ctx, fc)
-		f := func(i int) {
-			defer func() {
-				if r := recover(); r != nil {
-					ec.Error(ctx, ec.Recover(ctx, r))
-					ret = nil
-				}
-			}()
-			if !isLen1 {
-				defer wg.Done()
-			}
-			ret[i] = ec.marshalNCartItem2ᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐCartItem(ctx, sel, v[i])
-		}
-		if isLen1 {
-			f(i)
-		} else {
-			go f(i)
-		}
-
-	}
-	wg.Wait()
-
-	for _, e := range ret {
-		if e == graphql.Null {
-			return graphql.Null
-		}
-	}
-
-	return ret
+func (ec *executionContext) marshalNCart2githubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐCart(ctx context.Context, sel ast.SelectionSet, v custom.Cart) graphql.Marshaler {
+	return ec._Cart(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNCartItem2ᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐCartItem(ctx context.Context, sel ast.SelectionSet, v *custom.CartItem) graphql.Marshaler {
+func (ec *executionContext) marshalNCart2ᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐCart(ctx context.Context, sel ast.SelectionSet, v *custom.Cart) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
 		}
 		return graphql.Null
 	}
-	return ec._CartItem(ctx, sel, v)
+	return ec._Cart(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNCartItemInput2githubᚗcomᚋHoher2000ᚋshopQLᚋgraphᚋmodelᚐCartItemInput(ctx context.Context, v any) (model.CartItemInput, error) {
@@ -4550,6 +4721,60 @@ func (ec *executionContext) marshalNItem2ᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋ
 		return graphql.Null
 	}
 	return ec._Item(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNOrderItem2ᚕᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐOrderItemᚄ(ctx context.Context, sel ast.SelectionSet, v []*custom.OrderItem) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNOrderItem2ᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐOrderItem(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNOrderItem2ᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐOrderItem(ctx context.Context, sel ast.SelectionSet, v *custom.OrderItem) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._OrderItem(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalNSeller2githubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐSeller(ctx context.Context, sel ast.SelectionSet, v custom.Seller) graphql.Marshaler {

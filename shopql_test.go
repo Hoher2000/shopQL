@@ -532,11 +532,13 @@ func TestApp(t *testing.T) {
 			GQL: `
 			mutation {
 				AddToCart(in: {itemID: 1, quantity: 2}) {
-				  item {
-					id
-					name
-				  }
-				  quantity
+				  items {
+				  	item {
+						id
+						name
+				  	}
+				  	quantity
+		}
 				}
 			}
 			`,
@@ -579,12 +581,15 @@ func TestApp(t *testing.T) {
 			GQL: `
 			mutation {
 				AddToCart(in: {itemID: 12, quantity: 2}) {
+				  items {
 				  item {
 					id
 					name
 					inStockText
 				  }
 				  quantity
+		}
+				  cost
 				}
 			}
 			`,
@@ -592,19 +597,22 @@ func TestApp(t *testing.T) {
 			TokenName: "token1",
 			ExpectedRaw: `
 			{
-				"data": {
-				  "AddToCart": [
-					{
-					  "item": {
-						"id": 12,
-						"name": "Да Хун Пао",
-						"inStockText": "хватает"
-					  },
-					  "quantity": 2
-					}
-				  ]
-				}
-			  }			`,
+    "data": {
+        "AddToCart": {
+            "items": [
+                {
+                    "item": {
+                        "id": 12,
+                        "name": "Да Хун Пао",
+                        "inStockText": "хватает"
+                    },
+                    "quantity": 2
+                }
+            ],
+            "cost": 0
+        }
+    }
+}			`,
 		},
 		// ----------------------------------------------------------------------------------------
 		&ApiTestCase{
@@ -612,6 +620,7 @@ func TestApp(t *testing.T) {
 			GQL: `
 			mutation {
 				AddToCart(in: {itemID: 12, quantity: 2}) {
+				  items {
 				  item {
 					id
 					name
@@ -619,25 +628,28 @@ func TestApp(t *testing.T) {
 				  }
 				  quantity
 				}
+		}
 			}
 			`,
 			URL:       gqlURL,
 			TokenName: "token1",
 			ExpectedRaw: `
 			{
-				"data": {
-				  "AddToCart": [
-					{
-					  "item": {
-						"id": 12,
-						"name": "Да Хун Пао",
-						"inStockText": "мало"
-					  },
-					  "quantity": 4
-					}
-				  ]
-				}
-			}
+    "data": {
+        "AddToCart": {
+            "items": [
+                {
+                    "item": {
+                        "id": 12,
+                        "name": "Да Хун Пао",
+                        "inStockText": "мало"
+                    },
+                    "quantity": 4
+                }
+            ]
+        }
+    }
+}
 			`,
 		},
 		// ----------------------------------------------------------------------------------------
@@ -646,6 +658,7 @@ func TestApp(t *testing.T) {
 			GQL: `
 			mutation {
 				AddToCart(in: {itemID: 12, quantity: 2}) {
+				  items {
 				  item {
 					id
 					name
@@ -653,6 +666,7 @@ func TestApp(t *testing.T) {
 				  }
 				  quantity
 				}
+		}
 			}
 			`,
 			URL:       gqlURL,
@@ -677,6 +691,7 @@ func TestApp(t *testing.T) {
 			GQL: `
 			mutation {
 				AddToCart(in: {itemID: 1, quantity: 1}) {
+				  items {
 				  item {
 					id
 					name
@@ -685,32 +700,35 @@ func TestApp(t *testing.T) {
 				  quantity
 				}
 			}
+		}
 			`,
 			URL:       gqlURL,
 			TokenName: "token1",
 			ExpectedRaw: `
 			{
-				"data": {
-				  "AddToCart": [
-					{
-					  "item": {
-						"id": 12,
-						"name": "Да Хун Пао",
-						"inStockText": "мало"
-					  },
-					  "quantity": 4
-					},
-					{
-						"item": {
-						  "id": 1,
-						  "name": "Грокаем алгоритмы | Бхаргава Адитья",
-						  "inStockText": "мало"
-						},
-						"quantity": 1
-					}
-				  ]
-				}
-			}
+    "data": {
+        "AddToCart": {
+            "items": [
+                {
+                    "item": {
+                        "id": 12,
+                        "name": "Да Хун Пао",
+                        "inStockText": "мало"
+                    },
+                    "quantity": 4
+                },
+                {
+                    "item": {
+                        "id": 1,
+                        "name": "Грокаем алгоритмы | Бхаргава Адитья",
+                        "inStockText": "мало"
+                    },
+                    "quantity": 1
+                }
+            ]
+        }
+    }
+}
 			`,
 		},
 		// ----------------------------------------------------------------------------------------
@@ -719,6 +737,7 @@ func TestApp(t *testing.T) {
 			GQL: `
 			mutation {
 				RemoveFromCart(in: {itemID: 1, quantity: 1}) {
+				  items {
 				  item {
 					id
 					name
@@ -726,23 +745,26 @@ func TestApp(t *testing.T) {
 				  quantity
 				}
 			}
+		}
 			`,
 			URL:       gqlURL,
 			TokenName: "token1",
 			ExpectedRaw: `
 			{
-				"data": {
-				  "RemoveFromCart": [
-					{
-					  "item": {
-						"id": 12,
-						"name": "Да Хун Пао"
-					  },
-					  "quantity": 4
-					}
-				  ]
-				}
-			}
+    "data": {
+        "RemoveFromCart": {
+            "items": [
+                {
+                    "item": {
+                        "id": 12,
+                        "name": "Да Хун Пао"
+                    },
+                    "quantity": 4
+                }
+            ]
+        }
+    }
+}
 			`,
 		},
 
@@ -752,6 +774,7 @@ func TestApp(t *testing.T) {
 			GQL: `
 			{
 				MyCart {
+				  items {
 				  item {
 					id
 					name
@@ -760,13 +783,16 @@ func TestApp(t *testing.T) {
 				  quantity
 				}
 			}
+		}
 			`,
 			URL:       gqlURL,
 			TokenName: "token1",
 			ExpectedRaw: `
 			{
 				"data": {
-				  "MyCart": [
+				  "MyCart": {
+				  "items":
+				  [
 					{
 					  "item": {
 						"id": 12,
@@ -778,6 +804,7 @@ func TestApp(t *testing.T) {
 				  ]
 				}
 			}
+		}
 			`,
 		},
 		// ----------------------------------------------------------------------------------------
@@ -792,6 +819,7 @@ func TestApp(t *testing.T) {
 					id
 					name
 					inCart
+					price
 				  }
 				}
 			}
@@ -808,27 +836,32 @@ func TestApp(t *testing.T) {
 					  {
 						"id": 9,
 						"name": "Си Пу Юань, Шен Пуэр",
-						"inCart": 0
+						"inCart": 0,
+						"price":0
 					  },
 					  {
 						"id": 10,
 						"name": "Мэнхай 7542, Шен Пуэр",
-						"inCart": 0
+						"inCart": 0,
+						"price":0
 					  },
 					  {
 						"id": 11,
 						"name": "Дянь Хун",
-						"inCart": 0
+						"inCart": 0,
+						"price":0
 					  },
 					  {
 						"id": 12,
 						"name": "Да Хун Пао",
-						"inCart": 4
+						"inCart": 4,
+						"price":0
 					  },
 					  {
 						"id": 13,
 						"name": "Габа Улун",
-						"inCart": 0
+						"inCart": 0,
+						"price":0
 					  }
 					]
 				  }
