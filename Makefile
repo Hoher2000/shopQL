@@ -21,7 +21,7 @@ clearmongo:
 .PHONY: test
 test:
 	$(MAKE) runmongo
-	sleep 0.1
+	sleep 0.5
 	go test -v
 	$(MAKE) clearmongo
 	$(MAKE) statusmongo

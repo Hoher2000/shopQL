@@ -5,7 +5,6 @@ import (
 	"log"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/99designs/gqlgen/graphql"
 	"github.com/99designs/gqlgen/graphql/handler"
@@ -36,9 +35,9 @@ func NewMongoClient(mongoURI string) *mongo.Client {
 		log.Fatalf("MongoDB client options error - %v\n", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	err = client.Ping(ctx, readpref.Primary())
+	//ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	//defer cancel()
+	err = client.Ping(context.Background(), readpref.Primary())
 	if err != nil {
 		log.Fatalf("MongoDB connection error - %v\n", err)
 	}
@@ -68,10 +67,10 @@ func GetApp() http.Handler {
 	mux := http.NewServeMux()
 	cl := NewMongoClient("mongodb://admin:admin@localhost:27017")
 	defer func() {
-		ctx, cancel := context.WithTimeout(context.TODO(), 2*time.Second)
-		defer cancel()
-		if err := cl.Disconnect(ctx); err != nil {
-			log.Fatal(err)
+		//ctx, cancel := context.WithTimeout(context.TODO(), 2*time.Second)
+		//defer cancel()
+		if err := cl.Disconnect(context.Background()); err != nil {
+			log.Fatalf("disconnect err - %v", err)
 		}
 	}()
 	shopDB := storage.NewMongoDB(cl)

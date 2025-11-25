@@ -18,7 +18,6 @@ type Shoper interface {
 	GetSeller(ctx context.Context, selID int) (*custom.Seller, error)
 	GetSellerItems(ctx context.Context, selID int, limit *int, offset *int) ([]*custom.Item, error)
 	GetItem(ctx context.Context, itemID int) (*custom.Item, error)
-	GetItemCatalog(ctx context.Context, obj *custom.Item) (*custom.Catalog, error)
 	GetItemInStock(ctx context.Context, itemID int) (int, error)
 	GetItemPrice(ctx context.Context, ItemID int) (int, error)	
 	UpdateItemInStock(ctx context.Context, itemID, quantity int) error

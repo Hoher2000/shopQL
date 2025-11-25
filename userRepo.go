@@ -55,10 +55,10 @@ func (u *UserRepo) hashPass(plainPassword, salt string) []byte {
 }
 
 func (u *UserRepo) Create(ctx context.Context, user *User) (*User, error) {
-	cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
+	//cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	//defer cancel()
 	_, err := u.Database(dbName).Collection(userCollName).Find(
-		cctx,
+		ctx,
 		bson.M{"username": user.Name, "email": user.Email},
 	)
 	if err == nil {
@@ -68,7 +68,7 @@ func (u *UserRepo) Create(ctx context.Context, user *User) (*User, error) {
 		return nil, err
 	}
 	user.Password = string(u.hashPass(user.Password, randstr.String(10)))
-	res, err := u.Database(dbName).Collection(userCollName).InsertOne(cctx, user)
+	res, err := u.Database(dbName).Collection(userCollName).InsertOne(ctx, user)
 	if err != nil {
 		return nil, err
 	}
@@ -158,11 +158,11 @@ func (u *UserRepo) Reg(w http.ResponseWriter, r *http.Request) {
 
 func (u *UserRepo) GetUserCart(ctx context.Context) (*custom.Cart, error) {
 	ID := ctx.Value("userID").(bson.ObjectID)
-	cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
+	//cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	//defer cancel()
 	cart := bson.M{"cart": nil}
 	err := u.Database(dbName).Collection(userCollName).FindOne(
-		cctx,
+		ctx,
 		bson.M{"_id": ID},
 		options.FindOne().SetProjection(bson.M{"cart": nil}),
 	).Decode(&cart)
@@ -177,10 +177,10 @@ func (u *UserRepo) GetUserCart(ctx context.Context) (*custom.Cart, error) {
 
 func (u *UserRepo) UpdateUserCart(ctx context.Context, cart *custom.Cart) error {
 	ID := ctx.Value("userID").(bson.ObjectID)
-	cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
+	//cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	//defer cancel()
 	_, err := u.Database(dbName).Collection(userCollName).UpdateByID(
-		cctx,
+		ctx,
 		ID,
 		bson.M{"cart": cart},
 	)
