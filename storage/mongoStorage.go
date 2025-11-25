@@ -191,10 +191,10 @@ func (m *MongoDB) GetSeller(ctx context.Context, selID int) (*custom.Seller, err
 	var sel custom.Seller
 	if err := m.Database(dbName).Collection(sellerCollName).FindOne(
 		ctx,
-		bson.M{"_id": sel},
+		bson.M{"_id": selID},
 	).Decode(&sel); err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
-			log.Printf("GetSeller: no such seller in db - %v\n", err)
+			log.Printf("GetSeller: no such seller ID %v in db - %v\n", selID, err)
 			return nil, errors.New("seller is not exist")
 		}
 		log.Printf("GetSeller: find in db error - %v\n", err)

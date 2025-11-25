@@ -43,11 +43,11 @@ type User struct {
 
 type UserRepo struct {
 	*mongo.Client
-	Secret string
+	Secret []byte
 }
 
 func NewUserRepo(cl *mongo.Client, secret string) *UserRepo {
-	return &UserRepo{cl, secret}
+	return &UserRepo{cl, []byte(secret)}
 }
 
 func (u *UserRepo) hashPass(plainPassword, salt string) []byte {
@@ -89,23 +89,29 @@ func (u *UserRepo) Create(ctx context.Context, user *User) (*User, error) {
 func (u *UserRepo) CheckJWT(ctx context.Context, tokenString string) error {
 	token, err := jwt.ParseWithClaims(tokenString, &jwt.RegisteredClaims{}, func(token *jwt.Token) (any, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			log.Printf("CheckJWT: bad signing method - %v\n", token.Header["alg"])
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return u.Secret, nil
 	})
 	if err != nil {
+		log.Printf("CheckJWT: failed to parse token - %v\n", err)
 		return fmt.Errorf("failed to parse token: %w", err)
 	}
 	if claims, ok := token.Claims.(*jwt.RegisteredClaims); ok && token.Valid {
 		hexID := claims.ID
 		if hexID == "" {
+			log.Printf("CheckJWT: empty userID in JWT\n")
 			return errors.New("empty userID")
 		}
 		bsonID, err := bson.ObjectIDFromHex(hexID)
 		if err != nil {
+			log.Printf("CheckJWT: hex string is not valid ObjectId - %v\n", err)
 			return fmt.Errorf("hex string is not valid ObjectId - %w", err)
 		}
 		ctx = context.WithValue(ctx, "userID", bsonID)
+		log.Printf("CheckJWT: success, userID - %v\n", bsonID)
+		return nil
 	}
 	return errors.New("invalid token or claims")
 }
@@ -170,19 +176,25 @@ func (u *UserRepo) GetUserCart(ctx context.Context) (*custom.Cart, error) {
 	ID := ctx.Value("userID").(bson.ObjectID)
 	//cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	//defer cancel()
-	cart := bson.M{"cart": nil}
-	err := u.Database(dbName).Collection(userCollName).FindOne(
+	res := bson.M{"cart": nil}
+	if err := u.Database(dbName).Collection(userCollName).FindOne(
 		ctx,
 		bson.M{"_id": ID},
 		options.FindOne().SetProjection(bson.M{"cart": nil}),
-	).Decode(&cart)
-	if err != nil {
+	).Decode(&res); err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
-			return &custom.Cart{}, nil
+			log.Printf("GetUserCart: user Id %v is not exist\n", ID)
+			return nil, errors.New("user is not exist")
 		}
-		return nil, errors.New("internal DB error")
+		log.Printf("GetUserCart: finding in db error - %v\n", err)
+		return nil, dbErr
 	}
-	return cart["cart"].(*custom.Cart), nil
+	cart := res["cart"].(*custom.Cart)
+	if cart.CartItems == nil {
+		cart.CartItems = make([]*custom.OrderItem, 0)
+	}
+	log.Printf("GetUserCart: succes fo user %v\n", ID)
+	return cart, nil
 }
 
 func (u *UserRepo) UpdateUserCart(ctx context.Context, cart *custom.Cart) error {
@@ -195,14 +207,21 @@ func (u *UserRepo) UpdateUserCart(ctx context.Context, cart *custom.Cart) error 
 		bson.M{"cart": cart},
 	)
 	if err != nil {
-		return errors.New("internal BD error")
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			log.Printf("UpdateUserCart: user Id %v is not exist\n", ID)
+			return errors.New("user is not exist")
+		}
+		log.Printf("UpdateUserCart: finding in db error - %v\n", err)
+		return dbErr
 	}
+	log.Printf("UpdateUserCart: success fo user ID %v\n", ID)
 	return nil
 }
 
 func (u *UserRepo) GetItemCountInCart(ctx context.Context, itemID int) (int, error) {
 	cart, err := u.GetUserCart(ctx)
 	if err != nil {
+		log.Printf("GetItemCountInCart: GetUserCart error - %v\n", err)
 		return -1, err
 	}
 	for i := range cart.CartItems {
@@ -210,5 +229,6 @@ func (u *UserRepo) GetItemCountInCart(ctx context.Context, itemID int) (int, err
 			return cart.CartItems[i].Quantity, nil
 		}
 	}
+	log.Printf("GetItemCountInCart: success fo item ID %v\n", itemID)
 	return 0, nil
 }

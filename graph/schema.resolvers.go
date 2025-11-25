@@ -125,7 +125,7 @@ func (r *itemResolver) Parent(ctx context.Context, obj *custom.Item) (*custom.Ca
 // AddToCart is the resolver for the AddToCart field.
 func (r *mutationResolver) AddToCart(ctx context.Context, in model.CartItemInput) (*custom.Cart, error) {
 	id, err := strconv.Atoi(in.ItemID)
-	if err != nil {
+	if err != nil {		
 		return nil, err
 	}
 	inStock, err := r.Shop.GetItemInStock(ctx, id)
