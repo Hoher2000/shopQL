@@ -66,13 +66,14 @@ func AuthMiddleWare(next http.Handler) http.Handler {
 func GetApp() http.Handler {
 	mux := http.NewServeMux()
 	cl := NewMongoClient("mongodb://admin:admin@localhost:27017")
-	defer func() {
+	/*defer func() {
 		//ctx, cancel := context.WithTimeout(context.TODO(), 2*time.Second)
 		//defer cancel()
 		if err := cl.Disconnect(context.Background()); err != nil {
 			log.Fatalf("disconnect err - %v", err)
 		}
-	}()
+		log.Println("mongo is disconnected")
+	}()*/
 	shopDB := storage.NewMongoDB(cl)
 	userRepo := NewUserRepo(cl, "gpaphquerylanguage")
 	if err := shopDB.ParseShop("testdata.json"); err != nil {

@@ -259,7 +259,7 @@ func (m *MongoDB) UpdateItemInStock(ctx context.Context, itemID, quantity int) e
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			log.Printf("GetItemInStock: no item in stock - %v\n", itemID)
-			errors.New("no such item in stock")
+			return errors.New("no such item in stock")
 		}
 		log.Printf("UpdateItemInStock: update db error - %v\n", err)
 		return dbErr

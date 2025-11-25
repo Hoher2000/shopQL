@@ -20,6 +20,7 @@ clearmongo:
 
 .PHONY: test
 test:
+	$(MAKE) clearmongo
 	$(MAKE) runmongo
 	sleep 0.5
 	go test -v

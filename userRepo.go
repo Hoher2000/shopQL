@@ -27,7 +27,10 @@ const (
 	sellerCollName  = "sellers"
 )
 
-var userExistErr = errors.New("user with same login|email already exist")
+var (
+	userExistErr = errors.New("user with same login|email already exist")
+	dbErr        = errors.New("internal database error")
+)
 
 type User struct {
 	ID       bson.ObjectID `json:"id" bson:"_id"`
@@ -57,22 +60,29 @@ func (u *UserRepo) hashPass(plainPassword, salt string) []byte {
 func (u *UserRepo) Create(ctx context.Context, user *User) (*User, error) {
 	//cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	//defer cancel()
-	_, err := u.Database(dbName).Collection(userCollName).Find(
-		ctx,
-		bson.M{"username": user.Name, "email": user.Email},
-	)
-	if err == nil {
-		return nil, userExistErr
+	filter := bson.M{
+		"$or": []bson.M{
+			{"username": user.Name},
+			{"email": user.Email},
+		},
 	}
-	if err != mongo.ErrNoDocuments {
-		return nil, err
+	count, err := u.Database(dbName).Collection(userCollName).CountDocuments(ctx, filter)
+	if err != nil {
+		log.Printf("User creating: checking email && name error - %v\n", err)
+		return nil, dbErr
+	}
+	if count > 0 {
+		log.Printf("User creating: user with same credentials already exist - %v\n", err)
+		return nil, userExistErr
 	}
 	user.Password = string(u.hashPass(user.Password, randstr.String(10)))
 	res, err := u.Database(dbName).Collection(userCollName).InsertOne(ctx, user)
 	if err != nil {
-		return nil, err
+		log.Printf("User creating: user inserting error - %v\n", err)
+		return nil, dbErr
 	}
 	user.ID = res.InsertedID.(bson.ObjectID)
+	log.Printf("User creating: user is created, ID - %v\n", user.ID)
 	return user, nil
 }
 
