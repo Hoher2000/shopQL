@@ -7,6 +7,7 @@ package graph
 import (
 	"context"
 	"errors"
+	"log"
 	"strconv"
 
 	custom "github.com/Hoher2000/shopQL/customModels"
@@ -125,20 +126,24 @@ func (r *itemResolver) Parent(ctx context.Context, obj *custom.Item) (*custom.Ca
 // AddToCart is the resolver for the AddToCart field.
 func (r *mutationResolver) AddToCart(ctx context.Context, in model.CartItemInput) (*custom.Cart, error) {
 	id, err := strconv.Atoi(in.ItemID)
-	if err != nil {		
+	if err != nil {
+		log.Printf("AddToCart: convert ID error - %v\n", err)
 		return nil, err
 	}
 	inStock, err := r.Shop.GetItemInStock(ctx, id)
 	if in.Quantity > inStock {
+		log.Printf("AddToCart: not enough quantity, get - %v, in stock - %v\n", in.Quantity, inStock)
 		return nil, errors.New("not enough quantity")
 	}
 
 	if err = r.Shop.UpdateItemInStock(ctx, id, inStock-in.Quantity); err != nil {
+		log.Printf("AddToCart: UpdateItemInStock error - %v\n", err)
 		return nil, err
 	}
 
 	cart, err := r.User.GetUserCart(ctx)
 	if err != nil {
+		log.Printf("AddToCart: GetUserCart error - %v\n", err)
 		return nil, err
 	}
 
@@ -155,9 +160,10 @@ func (r *mutationResolver) AddToCart(ctx context.Context, in model.CartItemInput
 	}
 
 	if err = r.User.UpdateUserCart(ctx, cart); err != nil {
+		log.Printf("AddToCart: UpdateUserCart error - %v\n", err)
 		return nil, err
 	}
-
+	log.Printf("AddToCart: succes, item - %v, count - %v\n", in.ItemID, in.Quantity)
 	return cart, nil
 }
 
