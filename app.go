@@ -52,8 +52,12 @@ func TokenFromCtx(ctx context.Context) string {
 
 func AuthMiddleWare(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/query" {
+			next.ServeHTTP(w, r)
+			return
+		}
 		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Token ")
-		log.Printf("request from user with token - %v\n", token)
+		//log.Printf("request from user with token - %v\n", token)
 		ctx := context.WithValue(r.Context(), tokenContextKey, token)
 		r = r.WithContext(ctx)
 		next.ServeHTTP(w, r)
@@ -71,15 +75,16 @@ func GetApp() http.Handler {
 		}
 	}()
 	shopDB := storage.NewMongoDB(cl)
-	userRepo := NewUserRepo(cl)
+	userRepo := NewUserRepo(cl, "gpaphquerylanguage")
 	if err := shopDB.ParseShop("testdata.json"); err != nil {
 		log.Fatal(err)
 	}
 	config := graph.Config{Resolvers: &graph.Resolver{Shop: shopDB, User: userRepo}}
 	config.Directives.Auth = func(ctx context.Context, obj any, next graphql.Resolver) (res any, err error) {
 		token := TokenFromCtx(ctx)
-		if token == "" {
-			log.Println("@auth directive - empty token")
+		err = userRepo.CheckJWT(ctx, token)
+		if err != nil {
+			log.Printf("@auth directive - bad token %v\n", err)
 			graphql.AddError(ctx, &gqlerror.Error{
 				Message: "User not authorized",
 				Path:    graphql.GetFieldContext(ctx).Path(),

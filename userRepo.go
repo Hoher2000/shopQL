@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/thanhpk/randstr"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"golang.org/x/crypto/argon2"
 )
 
@@ -23,7 +25,6 @@ const (
 	catalogCollName = "catalogs"
 	itemsCollName   = "items"
 	sellerCollName  = "sellers"
-	mySigningKey    = "gpaphquerylanguage"
 )
 
 var userExistErr = errors.New("user with same login|email already exist")
@@ -39,10 +40,11 @@ type User struct {
 
 type UserRepo struct {
 	*mongo.Client
+	Secret string
 }
 
-func NewUserRepo(cl *mongo.Client) *UserRepo {
-	return &UserRepo{cl}
+func NewUserRepo(cl *mongo.Client, secret string) *UserRepo {
+	return &UserRepo{cl, secret}
 }
 
 func (u *UserRepo) hashPass(plainPassword, salt string) []byte {
@@ -72,6 +74,30 @@ func (u *UserRepo) Create(ctx context.Context, user *User) (*User, error) {
 	}
 	user.ID = res.InsertedID.(bson.ObjectID)
 	return user, nil
+}
+
+func (u *UserRepo) CheckJWT(ctx context.Context, tokenString string) error {
+	token, err := jwt.ParseWithClaims(tokenString, &jwt.RegisteredClaims{}, func(token *jwt.Token) (any, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return u.Secret, nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to parse token: %w", err)
+	}
+	if claims, ok := token.Claims.(*jwt.RegisteredClaims); ok && token.Valid {
+		hexID := claims.ID
+		if hexID == "" {
+			return errors.New("empty userID")
+		}
+		bsonID, err := bson.ObjectIDFromHex(hexID)
+		if err != nil {
+			return fmt.Errorf("hex string is not valid ObjectId - %w", err)
+		}
+		ctx = context.WithValue(ctx, "userID", bsonID)
+	}
+	return errors.New("invalid token or claims")
 }
 
 func (u *UserRepo) Reg(w http.ResponseWriter, r *http.Request) {
@@ -111,9 +137,9 @@ func (u *UserRepo) Reg(w http.ResponseWriter, r *http.Request) {
 		Issuer:    "GQLShop",
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	ss, err := token.SignedString(mySigningKey)
+	ss, err := token.SignedString(u.Secret)
 	if err != nil {
-		log.Printf("registration - signing token erroe - %v\n", err)
+		log.Printf("registration - signing token error - %v\n", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -128,4 +154,51 @@ func (u *UserRepo) Reg(w http.ResponseWriter, r *http.Request) {
 	}
 	json.NewEncoder(w).Encode(resp)
 	log.Printf("registration success - %v\n", user.Name)
+}
+
+func (u *UserRepo) GetUserCart(ctx context.Context) (*custom.Cart, error) {
+	ID := ctx.Value("userID").(bson.ObjectID)
+	cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	cart := bson.M{"cart": nil}
+	err := u.Database(dbName).Collection(userCollName).FindOne(
+		cctx,
+		bson.M{"_id": ID},
+		options.FindOne().SetProjection(bson.M{"cart": nil}),
+	).Decode(&cart)
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return &custom.Cart{}, nil
+		}
+		return nil, errors.New("internal DB error")
+	}
+	return cart["cart"].(*custom.Cart), nil
+}
+
+func (u *UserRepo) UpdateUserCart(ctx context.Context, cart *custom.Cart) error {
+	ID := ctx.Value("userID").(bson.ObjectID)
+	cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	_, err := u.Database(dbName).Collection(userCollName).UpdateByID(
+		cctx,
+		ID,
+		bson.M{"cart": cart},
+	)
+	if err != nil {
+		return errors.New("internal BD error")
+	}
+	return nil
+}
+
+func (u *UserRepo) GetItemCountInCart(ctx context.Context, itemID int) (int, error) {
+	cart, err := u.GetUserCart(ctx)
+	if err != nil {
+		return -1, err
+	}
+	for i := range cart.CartItems {
+		if cart.CartItems[i].ItemID == itemID {
+			return cart.CartItems[i].Quantity, nil
+		}
+	}
+	return 0, nil
 }

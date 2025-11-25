@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -116,82 +115,83 @@ func (m *MongoDB) ParseShop(jsonFile string) error {
 	return nil
 }
 
-func (m *MongoDB) GetCatChilds(ctx context.Context, obj *custom.Catalog) ([]*custom.Catalog, error) {
-	if obj == nil {
-		return nil, errors.New("catalog object cannot be nil")
-	}
+func (m *MongoDB) GetCatChilds(ctx context.Context, catID int) ([]*custom.Catalog, error) {
 	cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	cats := []*custom.Catalog{}
 	cursor, err := m.Database(dbName).Collection(catalogCollName).Find(
 		cctx,
-		bson.M{"parentID": obj.ID},
+		bson.M{"parentID": catID},
 		options.Find().SetSort(bson.M{"_id": 1}),
 	)
 	if err != nil {
 		return nil, err
 	}
-	err = cursor.All(cctx, &cats)
-	if err != nil {
+	if err = cursor.All(cctx, &cats); err != nil {
 		return nil, err
 	}
 	return cats, err
 }
 
-func (m *MongoDB) GetCatParent(ctx context.Context, obj *custom.Catalog) (*custom.Catalog, error) {
-	if obj == nil {
-		return nil, errors.New("catalog object cannot be nil")
-	}
+func (m *MongoDB) GetCatalog(ctx context.Context, catID int) (*custom.Catalog, error) {
 	cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	var cat custom.Catalog
-	err := m.Database(dbName).Collection(catalogCollName).FindOne(
+	if err := m.Database(dbName).Collection(catalogCollName).FindOne(
 		cctx,
-		bson.M{"_id": obj.ParentID},
-	).Decode(&cat)
-	if err != nil {
+		bson.M{"_id": catID},
+	).Decode(&cat); err != nil {
 		return nil, err
 	}
-	return &cat, err
+	return &cat, nil
 }
 
-func (m *MongoDB) GetCatItems(ctx context.Context, obj *custom.Catalog, limit *int, offset *int) ([]*custom.Item, error) {
-	if obj == nil {
-		return nil, errors.New("catalog object cannot be nil")
-	}
+func (m *MongoDB) GetCatItems(ctx context.Context, catID int, limit *int, offset *int) ([]*custom.Item, error) {
 	cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	items := []*custom.Item{}
 	cursor, err := m.Database(dbName).Collection(itemsCollName).Find(
 		cctx,
-		bson.M{"catalogID": obj.ID},
+		bson.M{"catalogID": catID},
 		options.Find().SetSort(bson.M{"_id": 1}).SetLimit(int64(*limit)).SetSkip(int64(*offset)),
 	)
 	if err != nil {
 		return nil, err
 	}
-	err = cursor.All(cctx, &items)
-	if err != nil {
+	if err = cursor.All(cctx, &items); err != nil {
 		return nil, err
 	}
-	return items, err
+	return items, nil
 }
 
-func (m *MongoDB) GetItemSeller(ctx context.Context, obj *custom.Item) (*custom.Seller, error) {
-	if obj == nil {
-		return nil, errors.New("item object cannot be nil")
-	}
+func (m *MongoDB) GetSeller(ctx context.Context, selID int) (*custom.Seller, error) {
 	cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	var sel custom.Seller
-	err := m.Database(dbName).Collection(sellerCollName).FindOne(
+	if err := m.Database(dbName).Collection(sellerCollName).FindOne(
 		cctx,
-		bson.M{"_id": obj.SellerID},
-	).Decode(&sel)
+		bson.M{"_id": sel},
+	).Decode(&sel); err != nil {
+		return nil, err
+	}
+	return &sel, nil
+}
+func (m *MongoDB) GetSellerItems(ctx context.Context, selID int, limit *int, offset *int) ([]*custom.Item, error) {
+	cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	items := []*custom.Item{}
+	cursor, err := m.Database(dbName).Collection(itemsCollName).Find(
+		cctx,
+		bson.M{"sellerID": selID},
+		options.Find().SetSort(bson.M{"_id": 1}).SetLimit(int64(*limit)).SetSkip(int64(*offset)),
+	)
 	if err != nil {
 		return nil, err
 	}
-	return &sel, err
+	if err = cursor.All(cctx, &items); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 func (m *MongoDB) GetItemCatalog(ctx context.Context, obj *custom.Item) (*custom.Catalog, error) {
@@ -211,55 +211,64 @@ func (m *MongoDB) GetItemCatalog(ctx context.Context, obj *custom.Item) (*custom
 	return &cat, err
 }
 
-func (m *MongoDB) GetOrderItem(ctx context.Context, obj *custom.OrderItem) (*custom.Item, error) {
-	if obj == nil {
-		return nil, errors.New("item object cannot be nil")
+func (m *MongoDB) GetItemInStock(ctx context.Context, ItemID int) (int, error) {
+	cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	res := bson.M{"inStock": 0}
+	err := m.Database(dbName).Collection(itemsCollName).FindOne(
+		cctx,
+		bson.M{"_id": ItemID},
+		options.FindOne().SetProjection(bson.M{"inStock": 0}),
+	).Decode(&res)
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return 0, nil
+		}
+		return -1, errors.New("internal BD error")
 	}
+	return res["inStock"].(int), err
+}
+
+func (m *MongoDB) UpdateItemInStock(ctx context.Context, itemID, quantity int) error {
+	cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	_, err := m.Database(dbName).Collection(itemsCollName).UpdateByID(
+		cctx,
+		itemID,
+		bson.M{"inStock": quantity},
+	)
+	if err != nil {
+		return errors.New("internal BD error")
+	}
+	return nil
+}
+
+func (m *MongoDB) GetItemPrice(ctx context.Context, ItemID int) (int, error) {
+	res := bson.M{"price": 0}
+	err := m.Database(dbName).Collection(itemsCollName).FindOne(
+		ctx,
+		bson.M{"_id": ItemID},
+		options.FindOne().SetProjection(bson.M{"price": 0}),
+	).Decode(&res)
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return 0, nil
+		}
+		return -1, errors.New("internal BD error")
+	}
+	return res["price"].(int), err
+}
+
+func (m *MongoDB) GetItem(ctx context.Context, itemID int) (*custom.Item, error) {
 	cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	var it custom.Item
 	err := m.Database(dbName).Collection(itemsCollName).FindOne(
 		cctx,
-		bson.M{"_id": obj.ItemID},
+		bson.M{"_id": itemID},
 	).Decode(&it)
 	if err != nil {
 		return nil, err
 	}
 	return &it, err
-}
-
-func (m *MongoDB) GetCatalog(ctx context.Context, id string) (*custom.Catalog, error) {
-	idInt, err := strconv.Atoi(id)
-	if err != nil {
-		return nil, err
-	}
-	cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-	var cat custom.Catalog
-	err = m.Database(dbName).Collection(catalogCollName).FindOne(
-		cctx,
-		bson.M{"_id": idInt},
-	).Decode(&cat)
-	if err != nil {
-		return nil, err
-	}
-	return &cat, err
-}
-
-func (m *MongoDB) GetSeller(ctx context.Context, id string) (*custom.Seller, error) {
-	idInt, err := strconv.Atoi(id)
-	if err != nil {
-		return nil, err
-	}
-	cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-	var sel custom.Seller
-	err = m.Database(dbName).Collection(sellerCollName).FindOne(
-		cctx,
-		bson.M{"_id": idInt},
-	).Decode(&sel)
-	if err != nil {
-		return nil, err
-	}
-	return &sel, err
 }

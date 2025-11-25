@@ -4,7 +4,6 @@ import (
 	"context"
 
 	custom "github.com/Hoher2000/shopQL/customModels"
-	"github.com/Hoher2000/shopQL/graph/model"
 )
 
 // This file will not be regenerated automatically.
@@ -13,22 +12,22 @@ import (
 
 type Shoper interface {
 	ParseShop(string) error
-	GetCatChilds(ctx context.Context, obj *custom.Catalog) ([]*custom.Catalog, error)
-	GetCatParent(ctx context.Context, obj *custom.Catalog) (*custom.Catalog, error)
-	GetCatItems(ctx context.Context, obj *custom.Catalog, limit *int, offset *int) ([]*custom.Item, error)
-	GetItemSeller(ctx context.Context, obj *custom.Item) (*custom.Seller, error)
+	GetCatalog(ctx context.Context, catID int) (*custom.Catalog, error)
+	GetCatChilds(ctx context.Context, catID int) ([]*custom.Catalog, error)	
+	GetCatItems(ctx context.Context, catID int, limit *int, offset *int) ([]*custom.Item, error)
+	GetSeller(ctx context.Context, selID int) (*custom.Seller, error)
+	GetSellerItems(ctx context.Context, selID int, limit *int, offset *int) ([]*custom.Item, error)
+	GetItem(ctx context.Context, itemID int) (*custom.Item, error)
 	GetItemCatalog(ctx context.Context, obj *custom.Item) (*custom.Catalog, error)
-	GetOrderItem(ctx context.Context, obj *custom.OrderItem) (*custom.Item, error)
-	GetCatalog(ctx context.Context, id string) (*custom.Catalog, error)
-	GetSeller(ctx context.Context, id string) (*custom.Seller, error)
+	GetItemInStock(ctx context.Context, itemID int) (int, error)
+	GetItemPrice(ctx context.Context, ItemID int) (int, error)	
+	UpdateItemInStock(ctx context.Context, itemID, quantity int) error
 }
 
 type UserInterface interface {
-	AddToCart(ctx context.Context, in model.CartItemInput) (*custom.Cart, error)
-	RemoveFromCart(ctx context.Context, in model.CartItemInput) (*custom.Cart, error)
-	GetItemInCart(ctx context.Context, obj *custom.Item) (int, error)
-	GetCartCost(ctx context.Context, obj *custom.Cart) (int, error)
-	MyCart(ctx context.Context) (*custom.Cart, error)
+	GetUserCart(ctx context.Context) (*custom.Cart, error)
+	UpdateUserCart(ctx context.Context, cart *custom.Cart) error
+	GetItemCountInCart(ctx context.Context, itemID int) (int, error)	
 }
 
 type Resolver struct {
