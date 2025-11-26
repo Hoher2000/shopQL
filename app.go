@@ -82,7 +82,7 @@ func GetApp() http.Handler {
 	config := graph.Config{Resolvers: &graph.Resolver{Shop: shopDB, User: userRepo}}
 	config.Directives.Auth = func(ctx context.Context, obj any, next graphql.Resolver) (res any, err error) {
 		token := TokenFromCtx(ctx)
-		err = userRepo.CheckJWT(ctx, token)
+		newCtx, err := userRepo.CheckJWT(ctx, token)
 		if err != nil {
 			log.Printf("@auth directive - bad token %v\n", err)
 			graphql.AddError(ctx, &gqlerror.Error{
@@ -91,7 +91,7 @@ func GetApp() http.Handler {
 			})
 			return nil, nil
 		}
-		return next(ctx)
+		return next(newCtx)
 	}
 
 	srv := handler.New(graph.NewExecutableSchema(config))

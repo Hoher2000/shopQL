@@ -231,11 +231,11 @@ func (m *MongoDB) GetSellerItems(ctx context.Context, selID int, limit *int, off
 func (m *MongoDB) GetItemInStock(ctx context.Context, itemID int) (int, error) {
 	//cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	//defer cancel()
-	res := bson.M{"inStock": 0}
+	var res bson.M
 	if err := m.Database(dbName).Collection(itemsCollName).FindOne(
 		ctx,
 		bson.M{"_id": itemID},
-		options.FindOne().SetProjection(bson.M{"inStock": 0}),
+		options.FindOne().SetProjection(bson.M{"inStock": 1}),
 	).Decode(&res); err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			log.Printf("GetItemInStock: no item in stock - %v\n", itemID)
@@ -244,36 +244,36 @@ func (m *MongoDB) GetItemInStock(ctx context.Context, itemID int) (int, error) {
 		log.Printf("GetItemInStock: find in db error - %v\n", err)
 		return -1, dbErr
 	}
-	log.Printf("GetItemInStock: success for item - %v\n", itemID)
-	return res["inStock"].(int), nil
+	log.Printf("GetItemInStock: success for item - %v, res - %v\n", itemID, res["inStock"])
+	return int(res["inStock"].(int32)), nil
 }
 
 func (m *MongoDB) UpdateItemInStock(ctx context.Context, itemID, quantity int) error {
 	//cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	//defer cancel()
-	_, err := m.Database(dbName).Collection(itemsCollName).UpdateByID(
+	res, err := m.Database(dbName).Collection(itemsCollName).UpdateByID(
 		ctx,
 		itemID,
-		bson.M{"inStock": quantity},
+		bson.M{"$set": bson.M{"inStock": quantity}},
 	)
 	if err != nil {
-		if errors.Is(err, mongo.ErrNoDocuments) {
-			log.Printf("GetItemInStock: no item in stock - %v\n", itemID)
-			return errors.New("no such item in stock")
-		}
 		log.Printf("UpdateItemInStock: update db error - %v\n", err)
 		return dbErr
 	}
-	log.Printf("UpdateItemInStock: qauntity for item %v is setted to %v\n", itemID, quantity)
+	if res.MatchedCount == 0 {
+		log.Printf("GetItemInStock: no item in stock - %v\n", itemID)
+		return errors.New("no such item in stock")
+	}
+	log.Printf("UpdateItemInStock: quantity for item %v is setted to %v\n", itemID, quantity)
 	return nil
 }
 
 func (m *MongoDB) GetItemPrice(ctx context.Context, itemID int) (int, error) {
-	res := bson.M{"price": 0}
+	var res bson.M
 	if err := m.Database(dbName).Collection(itemsCollName).FindOne(
 		ctx,
 		bson.M{"_id": itemID},
-		options.FindOne().SetProjection(bson.M{"price": 0}),
+		options.FindOne().SetProjection(bson.M{"price": 1}),
 	).Decode(&res); err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			log.Printf("GetItemPrice: no such item in catalogs - %v\n", itemID)
@@ -283,7 +283,7 @@ func (m *MongoDB) GetItemPrice(ctx context.Context, itemID int) (int, error) {
 		return -1, dbErr
 	}
 	log.Printf("GetItemPrice: success for item %v\n", itemID)
-	return res["price"].(int), nil
+	return int(res["price"].(int32)), nil
 }
 
 func (m *MongoDB) GetItem(ctx context.Context, itemID int) (*custom.Item, error) {

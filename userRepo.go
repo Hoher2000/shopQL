@@ -76,6 +76,7 @@ func (u *UserRepo) Create(ctx context.Context, user *User) (*User, error) {
 		return nil, userExistErr
 	}
 	user.Password = string(u.hashPass(user.Password, randstr.String(10)))
+	user.Cart = &custom.Cart{CartItems: make([]*custom.OrderItem, 0)}
 	res, err := u.Database(dbName).Collection(userCollName).InsertOne(ctx, user)
 	if err != nil {
 		log.Printf("User creating: user inserting error - %v\n", err)
@@ -86,7 +87,7 @@ func (u *UserRepo) Create(ctx context.Context, user *User) (*User, error) {
 	return user, nil
 }
 
-func (u *UserRepo) CheckJWT(ctx context.Context, tokenString string) error {
+func (u *UserRepo) CheckJWT(ctx context.Context, tokenString string) (context.Context, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &jwt.RegisteredClaims{}, func(token *jwt.Token) (any, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			log.Printf("CheckJWT: bad signing method - %v\n", token.Header["alg"])
@@ -96,24 +97,24 @@ func (u *UserRepo) CheckJWT(ctx context.Context, tokenString string) error {
 	})
 	if err != nil {
 		log.Printf("CheckJWT: failed to parse token - %v\n", err)
-		return fmt.Errorf("failed to parse token: %w", err)
+		return nil, fmt.Errorf("failed to parse token: %w", err)
 	}
 	if claims, ok := token.Claims.(*jwt.RegisteredClaims); ok && token.Valid {
 		hexID := claims.ID
 		if hexID == "" {
 			log.Printf("CheckJWT: empty userID in JWT\n")
-			return errors.New("empty userID")
+			return nil, errors.New("empty userID")
 		}
 		bsonID, err := bson.ObjectIDFromHex(hexID)
 		if err != nil {
 			log.Printf("CheckJWT: hex string is not valid ObjectId - %v\n", err)
-			return fmt.Errorf("hex string is not valid ObjectId - %w", err)
+			return nil, fmt.Errorf("hex string is not valid ObjectId - %w", err)
 		}
-		ctx = context.WithValue(ctx, "userID", bsonID)
+		newCtx := context.WithValue(ctx, "userID", bsonID)
 		log.Printf("CheckJWT: success, userID - %v\n", bsonID)
-		return nil
+		return newCtx, nil
 	}
-	return errors.New("invalid token or claims")
+	return nil, errors.New("invalid token or claims")
 }
 
 func (u *UserRepo) Reg(w http.ResponseWriter, r *http.Request) {
@@ -173,14 +174,20 @@ func (u *UserRepo) Reg(w http.ResponseWriter, r *http.Request) {
 }
 
 func (u *UserRepo) GetUserCart(ctx context.Context) (*custom.Cart, error) {
-	ID := ctx.Value("userID").(bson.ObjectID)
+	ID, ok := ctx.Value("userID").(bson.ObjectID)
+	if !ok {
+		log.Printf("GetUserCart: user Id is not in context\n")
+		return nil, dbErr
+	}
 	//cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	//defer cancel()
-	res := bson.M{"cart": nil}
+	var res struct {
+		Cart *custom.Cart `bson:"cart"`
+	}
 	if err := u.Database(dbName).Collection(userCollName).FindOne(
 		ctx,
 		bson.M{"_id": ID},
-		options.FindOne().SetProjection(bson.M{"cart": nil}),
+		options.FindOne().SetProjection(bson.M{"cart": 1}),
 	).Decode(&res); err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			log.Printf("GetUserCart: user Id %v is not exist\n", ID)
@@ -189,30 +196,30 @@ func (u *UserRepo) GetUserCart(ctx context.Context) (*custom.Cart, error) {
 		log.Printf("GetUserCart: finding in db error - %v\n", err)
 		return nil, dbErr
 	}
-	cart := res["cart"].(*custom.Cart)
-	if cart.CartItems == nil {
-		cart.CartItems = make([]*custom.OrderItem, 0)
-	}
 	log.Printf("GetUserCart: succes fo user %v\n", ID)
-	return cart, nil
+	return res.Cart, nil
 }
 
 func (u *UserRepo) UpdateUserCart(ctx context.Context, cart *custom.Cart) error {
-	ID := ctx.Value("userID").(bson.ObjectID)
+	ID, ok := ctx.Value("userID").(bson.ObjectID)
+	if !ok {
+		log.Printf("UpdateUserCart: user Id is not in context\n")
+		return dbErr
+	}
 	//cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	//defer cancel()
-	_, err := u.Database(dbName).Collection(userCollName).UpdateByID(
+	res, err := u.Database(dbName).Collection(userCollName).UpdateByID(
 		ctx,
 		ID,
-		bson.M{"cart": cart},
+		bson.M{"$set": bson.M{"cart": cart}},
 	)
 	if err != nil {
-		if errors.Is(err, mongo.ErrNoDocuments) {
-			log.Printf("UpdateUserCart: user Id %v is not exist\n", ID)
-			return errors.New("user is not exist")
-		}
 		log.Printf("UpdateUserCart: finding in db error - %v\n", err)
 		return dbErr
+	}
+	if res.MatchedCount == 0 {
+		log.Printf("UpdateUserCart: user Id %v is not exist\n", ID)
+		return errors.New("user is not exist")
 	}
 	log.Printf("UpdateUserCart: success fo user ID %v\n", ID)
 	return nil
