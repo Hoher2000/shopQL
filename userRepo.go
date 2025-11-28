@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	custom "github.com/Hoher2000/shopQL/customModels"
@@ -20,17 +21,18 @@ import (
 )
 
 const (
-	dbName          = "shop"
-	userCollName    = "users"
-	catalogCollName = "catalogs"
-	itemsCollName   = "items"
-	sellerCollName  = "sellers"
+	dbName       = "shop"
+	userCollName = "users"
 )
 
 var (
-	userExistErr = errors.New("user with same login|email already exist")
-	dbErr        = errors.New("internal database error")
+	errUserExist            = errors.New("user with same login|email already exist")
+	errDB                   = errors.New("internal database error")
+	errBadToken             = errors.New("invalid token or claims")
+	userKey      ctxUserKey = "userID"
 )
+
+type ctxUserKey string
 
 type User struct {
 	ID       bson.ObjectID `json:"id" bson:"_id"`
@@ -39,6 +41,11 @@ type User struct {
 	Password string        `json:"password" bson:"password" validate:"required,min=4"`
 	Version  int           `json:"version" bson:"version"`
 	Cart     *custom.Cart  `json:"cart" bson:"cart"`
+}
+
+type CustomClaims struct {
+	*jwt.RegisteredClaims
+	UserVersion int
 }
 
 type UserRepo struct {
@@ -50,10 +57,14 @@ func NewUserRepo(cl *mongo.Client, secret string) *UserRepo {
 	return &UserRepo{cl, []byte(secret)}
 }
 
+func (u *UserRepo) Coll() *mongo.Collection {
+	return u.Database(dbName).Collection(userCollName)
+}
+
 func (u *UserRepo) hashPass(plainPassword, salt string) []byte {
 	hashedPass := argon2.IDKey([]byte(plainPassword), []byte(salt), 1, 64*1024, 4, 32)
 	res := make([]byte, len(salt))
-	copy(res, salt[:len(salt)])
+	copy(res, salt[:])
 	return append(res, hashedPass...)
 }
 
@@ -66,29 +77,29 @@ func (u *UserRepo) Create(ctx context.Context, user *User) (*User, error) {
 			{"email": user.Email},
 		},
 	}
-	count, err := u.Database(dbName).Collection(userCollName).CountDocuments(ctx, filter)
+	count, err := u.Coll().CountDocuments(ctx, filter)
 	if err != nil {
 		log.Printf("User creating: checking email && name error - %v\n", err)
-		return nil, dbErr
+		return nil, errDB
 	}
 	if count > 0 {
 		log.Printf("User creating: user with same credentials already exist - %v\n", err)
-		return nil, userExistErr
+		return nil, errUserExist
 	}
 	user.Password = string(u.hashPass(user.Password, randstr.String(10)))
 	user.Cart = &custom.Cart{CartItems: make([]*custom.OrderItem, 0)}
-	res, err := u.Database(dbName).Collection(userCollName).InsertOne(ctx, user)
+	user.ID = bson.NewObjectID()
+	_, err = u.Coll().InsertOne(ctx, user)
 	if err != nil {
 		log.Printf("User creating: user inserting error - %v\n", err)
-		return nil, dbErr
+		return nil, errDB
 	}
-	user.ID = res.InsertedID.(bson.ObjectID)
-	log.Printf("User creating: user is created, ID - %v\n", user.ID)
+	log.Printf("User creating: user %v is created, ID - %v\n", user.Name, user.ID)
 	return user, nil
 }
 
 func (u *UserRepo) CheckJWT(ctx context.Context, tokenString string) (context.Context, error) {
-	token, err := jwt.ParseWithClaims(tokenString, &jwt.RegisteredClaims{}, func(token *jwt.Token) (any, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &CustomClaims{}, func(token *jwt.Token) (any, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			log.Printf("CheckJWT: bad signing method - %v\n", token.Header["alg"])
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
@@ -97,23 +108,44 @@ func (u *UserRepo) CheckJWT(ctx context.Context, tokenString string) (context.Co
 	})
 	if err != nil {
 		log.Printf("CheckJWT: failed to parse token - %v\n", err)
-		return nil, fmt.Errorf("failed to parse token: %w", err)
+		return nil, errBadToken
 	}
-	if claims, ok := token.Claims.(*jwt.RegisteredClaims); ok && token.Valid {
-		hexID := claims.ID
-		if hexID == "" {
-			log.Printf("CheckJWT: empty userID in JWT\n")
-			return nil, errors.New("empty userID")
+	if claims, ok := token.Claims.(*CustomClaims); ok && token.Valid {
+		if issuer := claims.Issuer; issuer != "GQLShop" {
+			log.Printf("CheckJWT: bad issuer in claims\n")
+			return nil, errBadToken
+		}
+		var hexID string
+		if hexID = claims.ID; hexID == "" {
+			log.Printf("CheckJWT: empty user hex ID in claims\n")
+			return nil, errBadToken
 		}
 		bsonID, err := bson.ObjectIDFromHex(hexID)
 		if err != nil {
 			log.Printf("CheckJWT: hex string is not valid ObjectId - %v\n", err)
-			return nil, fmt.Errorf("hex string is not valid ObjectId - %w", err)
+			return nil, errBadToken
 		}
-		newCtx := context.WithValue(ctx, "userID", bsonID)
+		var res struct {
+			Version int `bson:"version"`
+		}
+		filter, opts := bson.M{"_id": bsonID}, options.FindOne().SetProjection(bson.M{"version": 1})
+		if err := u.Coll().FindOne(ctx, filter, opts).Decode(&res); err != nil {
+			if errors.Is(err, mongo.ErrNoDocuments) {
+				log.Printf("CheckJWT: user is not exist - %v\n", err)
+				return nil, errBadToken
+			}
+			log.Printf("CheckJWT: fetch user error - %v\n", err)
+			return nil, errDB
+		}
+		if res.Version != claims.UserVersion {
+			log.Printf("CheckJWT: bad user version in claims\n")
+			return nil, errBadToken
+		}
+		newCtx := context.WithValue(ctx, userKey, bsonID)
 		log.Printf("CheckJWT: success, userID - %v\n", bsonID)
 		return newCtx, nil
 	}
+	log.Printf("CheckJWT: invalid token or claims")
 	return nil, errors.New("invalid token or claims")
 }
 
@@ -132,13 +164,30 @@ func (u *UserRepo) Reg(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	validate := validator.New(validator.WithRequiredStructEnabled())
 	if err := validate.Struct(userData.User); err != nil {
-		log.Printf("registration - invalid input data - %v\n", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		valErr := err.(validator.ValidationErrors)
+		badFields := make([]string, 0)
+		for _, fe := range valErr {
+			badFields = append(badFields, fe.StructField())
+		}
+		log.Printf("registration - invalid input data - %v\n", strings.Join(badFields, " "))
+		resp := map[string]map[string]any{
+			"body": {
+				"status":  "fail",
+				"message": "invalid input data: " + strings.Join(badFields, " "),
+			},
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			log.Printf("registration - body encoding error - %v\n", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		//http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	user, err := u.Create(r.Context(), userData.User)
 	if err != nil {
-		if errors.Is(err, userExistErr) {
+		if errors.Is(err, errUserExist) {
 			log.Printf("registration - duplicate username or email - %v\n", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -147,11 +196,13 @@ func (u *UserRepo) Reg(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	claims := jwt.RegisteredClaims{
-		ID:        user.ID.Hex(),
-		IssuedAt:  jwt.NewNumericDate(time.Now()),
-		ExpiresAt: jwt.NewNumericDate(time.Now().Add(10 * 24 * time.Hour)),
-		Issuer:    "GQLShop",
+	claims := CustomClaims{
+		&jwt.RegisteredClaims{
+			ID:        user.ID.Hex(),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(10 * 24 * time.Hour)),
+			Issuer:    "GQLShop"},
+		user.Version,
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	ss, err := token.SignedString(u.Secret)
@@ -169,15 +220,19 @@ func (u *UserRepo) Reg(w http.ResponseWriter, r *http.Request) {
 			"token":   ss,
 		},
 	}
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		log.Printf("registration - body encoding error - %v\n", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	log.Printf("registration success - %v\n", user.Name)
 }
 
 func (u *UserRepo) GetUserCart(ctx context.Context) (*custom.Cart, error) {
-	ID, ok := ctx.Value("userID").(bson.ObjectID)
+	ID, ok := ctx.Value(userKey).(bson.ObjectID)
 	if !ok {
 		log.Printf("GetUserCart: user Id is not in context\n")
-		return nil, dbErr
+		return nil, errDB
 	}
 	//cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	//defer cancel()
@@ -194,17 +249,17 @@ func (u *UserRepo) GetUserCart(ctx context.Context) (*custom.Cart, error) {
 			return nil, errors.New("user is not exist")
 		}
 		log.Printf("GetUserCart: finding in db error - %v\n", err)
-		return nil, dbErr
+		return nil, errDB
 	}
 	log.Printf("GetUserCart: succes fo user %v\n", ID)
 	return res.Cart, nil
 }
 
 func (u *UserRepo) UpdateUserCart(ctx context.Context, cart *custom.Cart) error {
-	ID, ok := ctx.Value("userID").(bson.ObjectID)
+	ID, ok := ctx.Value(userKey).(bson.ObjectID)
 	if !ok {
 		log.Printf("UpdateUserCart: user Id is not in context\n")
-		return dbErr
+		return errDB
 	}
 	//cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	//defer cancel()
@@ -215,7 +270,7 @@ func (u *UserRepo) UpdateUserCart(ctx context.Context, cart *custom.Cart) error 
 	)
 	if err != nil {
 		log.Printf("UpdateUserCart: finding in db error - %v\n", err)
-		return dbErr
+		return errDB
 	}
 	if res.MatchedCount == 0 {
 		log.Printf("UpdateUserCart: user Id %v is not exist\n", ID)

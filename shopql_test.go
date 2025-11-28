@@ -75,9 +75,13 @@ func TestApp(t *testing.T) {
 	)
 
 	tplParams := map[string]string{
-		"EMAIL":    username + "@example.com",
-		"PASSWORD": password,
-		"USERNAME": username,
+		"EMAIL":     username + "@example.com",
+		"PASSWORD":  password,
+		"USERNAME":  username,
+		"EMAIL1":    "yahoo@example.com",
+		"BAD_EMAIL": "yahooexample.com",
+		"PASSWORD1": "1234",
+		"USERNAME1": "user",
 	}
 
 	replaceRe := regexp.MustCompile("{{(.*?)}}")
@@ -559,7 +563,7 @@ func TestApp(t *testing.T) {
 		},
 		// ----------------------------------------------------------------------------------------
 		&ApiTestCase{
-			Name:           "Register",
+			Name:           "Register user1 - success",
 			URL:            "/register",
 			Method:         http.MethodPost,
 			BodyRaw:        "{\"user\":{\"email\":\"{{EMAIL}}\", \"password\":\"{{PASSWORD}}\", \"username\":\"{{USERNAME}}\"}}",
@@ -572,6 +576,38 @@ func TestApp(t *testing.T) {
 				}
 				fmt.Println("-------------------- TOKEN:", val)
 				tplParams["token1"] = val.String()
+				return nil
+			},
+		},
+		// ----------------------------------------------------------------------------------------
+		&ApiTestCase{
+			Name:           "Register user2 - bad credentials",
+			URL:            "/register",
+			Method:         http.MethodPost,
+			BodyRaw:        "{\"user\":{\"email\":\"{{BAD_EMAIL}}\", \"password\":\"{{PASSWORD1}}\", \"username\":\"{{USERNAME1}}\"}}",
+			ResponseStatus: 400,
+			ExpectedRaw: `
+			{
+			"body": {
+				"message": "invalid input data: Email",
+				"status": "fail"
+			}
+			}`,
+		},
+		&ApiTestCase{
+			Name:           "Register user2 - success",
+			URL:            "/register",
+			Method:         http.MethodPost,
+			BodyRaw:        "{\"user\":{\"email\":\"{{EMAIL1}}\", \"password\":\"{{PASSWORD1}}\", \"username\":\"{{USERNAME1}}\"}}",
+			ResponseStatus: 200,
+			CheckFunc: func(resp interface{}) error {
+				fmt.Println("CheckFunc got resp", resp)
+				val, err := lookup.LookupString(resp, "body.token")
+				if err != nil {
+					return err
+				}
+				fmt.Println("-------------------- TOKEN:", val)
+				tplParams["token2"] = val.String()
 				return nil
 			},
 		},
@@ -917,7 +953,7 @@ func TestApp(t *testing.T) {
 				t.Fatalf("request error: %v", err)
 			}
 			defer resp.Body.Close()
-			respBody, err := io.ReadAll(resp.Body)
+			respBody, _ := io.ReadAll(resp.Body)
 
 			// t.Logf("\nreq body: %s\nresp body: %s", body, respBody)
 
