@@ -84,7 +84,7 @@ func (o *OrderRepo) GetUserCart(ctx context.Context) (*custom.Cart, error) {
 	return &cart, nil
 }
 
-func (o *OrderRepo) UpdateItemInCart(ctx context.Context, itemID string, quantityDelta int) error {
+func (o *OrderRepo) UpdateItemInCart(ctx context.Context, itemID, quantityDelta int) error {
 	userID, err := utils.GetUserObjectIDFromCtx(ctx)
 	if err != nil {
 		log.Printf("ALERT: %v - fetching User ID from context: %v\n", utils.GetFuncName(1), err)
@@ -100,7 +100,7 @@ func (o *OrderRepo) UpdateItemInCart(ctx context.Context, itemID string, quantit
 	return nil
 }
 
-func (o *OrderRepo) AddItemToCart(ctx context.Context, itemID string, quantityDelta int) error {
+func (o *OrderRepo) AddItemToCart(ctx context.Context, itemID, quantityDelta int) error {
 	userID, err := utils.GetUserObjectIDFromCtx(ctx)
 	if err != nil {
 		log.Printf("ALERT: %v - fetching User ID from context: %v\n", utils.GetFuncName(1), err)
@@ -120,7 +120,7 @@ func (o *OrderRepo) AddItemToCart(ctx context.Context, itemID string, quantityDe
 	return nil
 }
 
-func (o *OrderRepo) DeleteItemFromCart(ctx context.Context, itemID string) error {
+func (o *OrderRepo) DeleteItemFromCart(ctx context.Context, itemID int) error {
 	userID, err := utils.GetUserObjectIDFromCtx(ctx)
 	if err != nil {
 		log.Printf("ALERT: %v - fetching User ID from context: %v\n", utils.GetFuncName(1), err)
@@ -135,7 +135,7 @@ func (o *OrderRepo) DeleteItemFromCart(ctx context.Context, itemID string) error
 	return nil
 }
 
-func (o *OrderRepo) GetItemCountInCart(ctx context.Context, itemID string) (int, error) {
+func (o *OrderRepo) GetItemCountInCart(ctx context.Context, itemID int) (int, error) {
 	userID, err := utils.GetUserObjectIDFromCtx(ctx)
 	if err != nil {
 		log.Printf("ALERT: %v - fetching User ID from context: %v\n", utils.GetFuncName(1), err)

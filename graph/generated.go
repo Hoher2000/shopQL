@@ -44,6 +44,7 @@ type ResolverRoot interface {
 	CartItem() CartItemResolver
 	Catalog() CatalogResolver
 	Comment() CommentResolver
+	InOrderItem() InOrderItemResolver
 	Item() ItemResolver
 	Mutation() MutationResolver
 	Query() QueryResolver
@@ -157,6 +158,9 @@ type CommentResolver interface {
 	UserName(ctx context.Context, obj *custom.Comment) (string, error)
 	Item(ctx context.Context, obj *custom.Comment) (*custom.Item, error)
 	Rating(ctx context.Context, obj *custom.Comment) (float64, error)
+}
+type InOrderItemResolver interface {
+	ItemID(ctx context.Context, obj *custom.OrderItem) (string, error)
 }
 type ItemResolver interface {
 	InStockText(ctx context.Context, obj *custom.Item) (string, error)
@@ -1244,7 +1248,7 @@ func (ec *executionContext) _Catalog_id(ctx context.Context, field graphql.Colle
 			return obj.ID, nil
 		},
 		nil,
-		ec.marshalNID2string,
+		ec.marshalNID2int,
 		true,
 		true,
 	)
@@ -1702,7 +1706,7 @@ func (ec *executionContext) _InOrderItem_itemID(ctx context.Context, field graph
 		field,
 		ec.fieldContext_InOrderItem_itemID,
 		func(ctx context.Context) (any, error) {
-			return obj.ItemID, nil
+			return ec.resolvers.InOrderItem().ItemID(ctx, obj)
 		},
 		nil,
 		ec.marshalNString2string,
@@ -1715,8 +1719,8 @@ func (ec *executionContext) fieldContext_InOrderItem_itemID(_ context.Context, f
 	fc = &graphql.FieldContext{
 		Object:     "InOrderItem",
 		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
+		IsMethod:   true,
+		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type String does not have child fields")
 		},
@@ -1821,7 +1825,7 @@ func (ec *executionContext) _Item_id(ctx context.Context, field graphql.Collecte
 			return obj.ID, nil
 		},
 		nil,
-		ec.marshalNID2string,
+		ec.marshalNID2int,
 		true,
 		true,
 	)
@@ -3008,7 +3012,7 @@ func (ec *executionContext) _Seller_id(ctx context.Context, field graphql.Collec
 			return obj.ID, nil
 		},
 		nil,
-		ec.marshalNID2string,
+		ec.marshalNID2int,
 		true,
 		true,
 	)
@@ -5455,27 +5459,58 @@ func (ec *executionContext) _InOrderItem(ctx context.Context, sel ast.SelectionS
 		case "id":
 			out.Values[i] = ec._InOrderItem_id(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "itemID":
-			out.Values[i] = ec._InOrderItem_itemID(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._InOrderItem_itemID(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
 			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		case "itemName":
 			out.Values[i] = ec._InOrderItem_itemName(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "purchasePrice":
 			out.Values[i] = ec._InOrderItem_purchasePrice(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "quantity":
 			out.Values[i] = ec._InOrderItem_quantity(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
@@ -6745,6 +6780,22 @@ func (ec *executionContext) marshalNFloat2float64(ctx context.Context, sel ast.S
 		}
 	}
 	return graphql.WrapContextMarshaler(ctx, res)
+}
+
+func (ec *executionContext) unmarshalNID2int(ctx context.Context, v any) (int, error) {
+	res, err := graphql.UnmarshalInt(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNID2int(ctx context.Context, sel ast.SelectionSet, v int) graphql.Marshaler {
+	_ = sel
+	res := graphql.MarshalInt(v)
+	if res == graphql.Null {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+	}
+	return res
 }
 
 func (ec *executionContext) unmarshalNID2string(ctx context.Context, v any) (string, error) {

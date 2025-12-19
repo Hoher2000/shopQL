@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -58,11 +57,11 @@ func NewMongoDB(client *mongo.Client) *MongoDB {
 	return &MongoDB{client}
 }
 
-func (m *MongoDB) parseCatMongo(cat Catalog, parentID string, level, catCnt, itemsCnt int) (int, int, error) {
+func (m *MongoDB) parseCatMongo(cat Catalog, parentID, level, catCnt, itemsCnt int) (int, int, error) {
 	//ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	//defer cancel()
 	_, err := m.Database(dbName).Collection(catalogCollName).InsertOne(context.Background(), &custom.Catalog{
-		ID:       strconv.Itoa(cat.ID),
+		ID:       cat.ID,
 		Name:     cat.Name,
 		ParentID: parentID,
 	})
@@ -75,11 +74,11 @@ func (m *MongoDB) parseCatMongo(cat Catalog, parentID string, level, catCnt, ite
 		items := make([]*custom.Item, len(cat.Items))
 		for i, item := range cat.Items {
 			items[i] = &custom.Item{
-				ID:        strconv.Itoa(item.ID),
+				ID:        item.ID,
 				Name:      item.Name,
 				InStock:   item.InStock,
-				SellerID:  strconv.Itoa(item.SellerID),
-				CatalogID: strconv.Itoa(cat.ID),
+				SellerID:  item.SellerID,
+				CatalogID: cat.ID,
 				Price:     item.ID + item.InStock,
 			}
 			fmt.Printf(strings.Repeat("\t", level)+"---Item{ID: %v, Name: %v, Count: %v, Price: %v}\n", item.ID, item.Name, item.InStock, items[i].Price)
@@ -94,7 +93,7 @@ func (m *MongoDB) parseCatMongo(cat Catalog, parentID string, level, catCnt, ite
 	}
 	if cat.Childs != nil {
 		for i := range cat.Childs {
-			catCnt, itemsCnt, err = m.parseCatMongo(cat.Childs[i], strconv.Itoa(cat.ID), level+1, catCnt, itemsCnt)
+			catCnt, itemsCnt, err = m.parseCatMongo(cat.Childs[i], cat.ID, level+1, catCnt, itemsCnt)
 			if err != nil {
 				return catCnt, itemsCnt, err
 			}
@@ -120,7 +119,7 @@ func (m *MongoDB) ParseShop(jsonFile string) error {
 	log.Printf("INFO: Starting parse sellers into MongoDB\n")
 	for i, sel := range shop.Sellers {
 		sellers[i] = &custom.Seller{
-			ID:    strconv.Itoa(sel.ID),
+			ID:    sel.ID,
 			Name:  sel.Name,
 			Deals: sel.Deals,
 		}
@@ -135,7 +134,7 @@ func (m *MongoDB) ParseShop(jsonFile string) error {
 	}
 	log.Printf("INFO: %v sellers is parsed into MongoDB\n\n", len(shop.Sellers))
 	log.Printf("INFO: Starting parse catalogs into MongoDB\n")
-	catCnt, itemCnt, err := m.parseCatMongo(shop.Catalog, "", 1, 0, 0)
+	catCnt, itemCnt, err := m.parseCatMongo(shop.Catalog, 0, 1, 0, 0)
 	if err != nil {
 		return err
 	}
@@ -144,7 +143,7 @@ func (m *MongoDB) ParseShop(jsonFile string) error {
 	return nil
 }
 
-func (m *MongoDB) GetCatChilds(ctx context.Context, catID string) ([]*custom.Catalog, error) {
+func (m *MongoDB) GetCatChilds(ctx context.Context, catID int) ([]*custom.Catalog, error) {
 	//cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	//defer cancel()
 	cats := []*custom.Catalog{}
@@ -167,7 +166,7 @@ func (m *MongoDB) GetCatChilds(ctx context.Context, catID string) ([]*custom.Cat
 	return cats, nil
 }
 
-func (m *MongoDB) GetCatalog(ctx context.Context, catID string) (*custom.Catalog, error) {
+func (m *MongoDB) GetCatalog(ctx context.Context, catID int) (*custom.Catalog, error) {
 	//cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	//defer cancel()
 	var cat custom.Catalog
@@ -186,7 +185,7 @@ func (m *MongoDB) GetCatalog(ctx context.Context, catID string) (*custom.Catalog
 	return &cat, nil
 }
 
-func (m *MongoDB) GetCatItems(ctx context.Context, catID string, limit *int, offset *int) ([]*custom.Item, error) {
+func (m *MongoDB) GetCatItems(ctx context.Context, catID int, limit *int, offset *int) ([]*custom.Item, error) {
 	//cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	//defer cancel()
 	items := []*custom.Item{}
@@ -211,7 +210,7 @@ func (m *MongoDB) GetCatItems(ctx context.Context, catID string, limit *int, off
 	return items, nil
 }
 
-func (m *MongoDB) GetSeller(ctx context.Context, selID string) (*custom.Seller, error) {
+func (m *MongoDB) GetSeller(ctx context.Context, selID int) (*custom.Seller, error) {
 	//cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	//defer cancel()
 	var sel custom.Seller
@@ -229,7 +228,7 @@ func (m *MongoDB) GetSeller(ctx context.Context, selID string) (*custom.Seller, 
 	log.Printf("SUCCESS: %v. Seller ID - %v.\n", utils.GetFuncName(1), selID)
 	return &sel, nil
 }
-func (m *MongoDB) GetSellerItems(ctx context.Context, selID string, limit *int, offset *int) ([]*custom.Item, error) {
+func (m *MongoDB) GetSellerItems(ctx context.Context, selID int, limit *int, offset *int) ([]*custom.Item, error) {
 	//cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	//defer cancel()
 	items := []*custom.Item{}
@@ -254,7 +253,7 @@ func (m *MongoDB) GetSellerItems(ctx context.Context, selID string, limit *int, 
 	return items, nil
 }
 
-func (m *MongoDB) GetItemInStock(ctx context.Context, itemID string) (int, error) {
+func (m *MongoDB) GetItemInStock(ctx context.Context, itemID int) (int, error) {
 	//cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	//defer cancel()
 	var res struct {
@@ -276,7 +275,7 @@ func (m *MongoDB) GetItemInStock(ctx context.Context, itemID string) (int, error
 	return res.InStock, nil
 }
 
-func (m *MongoDB) UpdateItemInStock(ctx context.Context, itemID string, quantity int) error {
+func (m *MongoDB) UpdateItemInStock(ctx context.Context, itemID, quantity int) error {
 	//cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	//defer cancel()
 	res, err := m.Database(dbName).Collection(itemsCollName).UpdateByID(
@@ -296,7 +295,7 @@ func (m *MongoDB) UpdateItemInStock(ctx context.Context, itemID string, quantity
 	return nil
 }
 
-func (m *MongoDB) GetItemPrice(ctx context.Context, itemID string) (int, error) {
+func (m *MongoDB) GetItemPrice(ctx context.Context, itemID int) (int, error) {
 	var res struct {
 		Price int `bson:"price"`
 	}
@@ -316,7 +315,7 @@ func (m *MongoDB) GetItemPrice(ctx context.Context, itemID string) (int, error) 
 	return res.Price, nil
 }
 
-func (m *MongoDB) GetItemComments(ctx context.Context, itemID string, limit *int, offset *int) ([]*custom.Comment, error) {
+func (m *MongoDB) GetItemComments(ctx context.Context, itemID int, limit *int, offset *int) ([]*custom.Comment, error) {
 	//cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	//defer cancel()
 	comments := []*custom.Comment{}
@@ -341,7 +340,7 @@ func (m *MongoDB) GetItemComments(ctx context.Context, itemID string, limit *int
 	return comments, nil
 }
 
-func (m *MongoDB) AddItemComment(ctx context.Context, itemID, text, userName string) (*custom.Comment, error) {
+func (m *MongoDB) AddItemComment(ctx context.Context, itemID int, text, userName string) (*custom.Comment, error) {
 	var comment custom.Comment
 	filter := bson.M{"user": userName, "itemID": itemID}
 	opts := options.FindOneAndUpdate().SetUpsert(true).SetReturnDocument(options.After)
@@ -365,7 +364,7 @@ func (m *MongoDB) AddItemComment(ctx context.Context, itemID, text, userName str
 	}
 	if comment.UpdatedAt.Equal(comment.CreatedAt) {
 		//fmt.Println("!!!!!!!!!!NEW COMMENT!!!!!!!!!!!!")
-		go func(itemID string) {
+		go func(itemID int) {
 			defer func() {
 				if r := recover(); r != nil {
 					log.Printf("PANIC RECOVER: %v - %v\n", utils.GetFuncName(1), r)
@@ -385,7 +384,7 @@ func (m *MongoDB) AddItemComment(ctx context.Context, itemID, text, userName str
 	return &comment, nil
 }
 
-func (m *MongoDB) GetItem(ctx context.Context, itemID string) (*custom.Item, error) {
+func (m *MongoDB) GetItem(ctx context.Context, itemID int) (*custom.Item, error) {
 	//cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	//defer cancel()
 	var it custom.Item
@@ -404,7 +403,7 @@ func (m *MongoDB) GetItem(ctx context.Context, itemID string) (*custom.Item, err
 	return &it, nil
 }
 
-func (m *MongoDB) RateItem(ctx context.Context, itemID string, rating int) error {
+func (m *MongoDB) RateItem(ctx context.Context, itemID, rating int) error {
 	userID, err := utils.GetUserObjectIDFromCtx(ctx)
 	if err != nil {
 		log.Printf("ALERT: %v - fetching User ID from context: %v\n", utils.GetFuncName(1), err)
@@ -430,7 +429,7 @@ func (m *MongoDB) RateItem(ctx context.Context, itemID string, rating int) error
 	return nil
 }
 
-func (m *MongoDB) GetItemRating(ctx context.Context, itemID string) (float64, error) {
+func (m *MongoDB) GetItemRating(ctx context.Context, itemID int) (float64, error) {
 	pipe := []bson.M{
 		{"$match": bson.M{"itemID": itemID}},
 		{"$group": bson.M{
@@ -456,7 +455,7 @@ func (m *MongoDB) GetItemRating(ctx context.Context, itemID string) (float64, er
 	return 0, nil
 }
 
-func (m *MongoDB) UpdateItemRating(ctx context.Context, itemID string, rating float64) (*custom.Item, error) {
+func (m *MongoDB) UpdateItemRating(ctx context.Context, itemID int, rating float64) (*custom.Item, error) {
 	filter := bson.M{"_id": itemID}
 	options := options.FindOneAndUpdate().SetReturnDocument(options.After)
 	update := bson.M{"$set": bson.M{"rating": rating}}
@@ -474,7 +473,7 @@ func (m *MongoDB) UpdateItemRating(ctx context.Context, itemID string, rating fl
 	return &item, nil
 }
 
-func (m *MongoDB) RateItemComment(ctx context.Context, itemID string, userName string, rating int) error {
+func (m *MongoDB) RateItemComment(ctx context.Context, itemID int, userName string, rating int) error {
 	userID, err := utils.GetUserObjectIDFromCtx(ctx)
 	if err != nil {
 		log.Printf("ALERT: %v - fetching User ID from context: %v\n", utils.GetFuncName(1), err)
@@ -500,7 +499,7 @@ func (m *MongoDB) RateItemComment(ctx context.Context, itemID string, userName s
 	return nil
 }
 
-func (m *MongoDB) GetCommentRating(ctx context.Context, itemID string, userName string) (float64, error) {
+func (m *MongoDB) GetCommentRating(ctx context.Context, itemID int, userName string) (float64, error) {
 	pipe := []bson.M{
 		{"$match": bson.M{"creator": userName, "itemID": itemID}},
 		{"$group": bson.M{
@@ -526,7 +525,7 @@ func (m *MongoDB) GetCommentRating(ctx context.Context, itemID string, userName 
 	return r, nil
 }
 
-func (m *MongoDB) GetComment(ctx context.Context, itemID, userID string) (*custom.Comment, error) {
+func (m *MongoDB) GetComment(ctx context.Context, itemID int, userID string) (*custom.Comment, error) {
 	var comment *custom.Comment
 	err := m.Database(dbName).Collection(commentsCollName).FindOne(
 		ctx,

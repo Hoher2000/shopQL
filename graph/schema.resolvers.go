@@ -97,6 +97,11 @@ func (r *commentResolver) Rating(ctx context.Context, obj *custom.Comment) (floa
 	return r.Shoper.GetCommentRating(ctx, obj.ItemID, obj.UserID)
 }
 
+// ItemID is the resolver for the itemID field.
+func (r *inOrderItemResolver) ItemID(ctx context.Context, obj *custom.OrderItem) (string, error) {
+	panic(fmt.Errorf("not implemented: ItemID - itemID"))
+}
+
 // InStockText is the resolver for the inStockText field.
 func (r *itemResolver) InStockText(ctx context.Context, obj *custom.Item) (string, error) {
 	if obj == nil {
@@ -357,6 +362,9 @@ func (r *Resolver) Catalog() CatalogResolver { return &catalogResolver{r} }
 // Comment returns CommentResolver implementation.
 func (r *Resolver) Comment() CommentResolver { return &commentResolver{r} }
 
+// InOrderItem returns InOrderItemResolver implementation.
+func (r *Resolver) InOrderItem() InOrderItemResolver { return &inOrderItemResolver{r} }
+
 // Item returns ItemResolver implementation.
 func (r *Resolver) Item() ItemResolver { return &itemResolver{r} }
 
@@ -376,6 +384,7 @@ type cartResolver struct{ *Resolver }
 type cartItemResolver struct{ *Resolver }
 type catalogResolver struct{ *Resolver }
 type commentResolver struct{ *Resolver }
+type inOrderItemResolver struct{ *Resolver }
 type itemResolver struct{ *Resolver }
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
