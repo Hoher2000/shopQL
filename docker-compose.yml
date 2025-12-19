@@ -4,8 +4,8 @@ services:
     container_name: mongodb
     restart: unless-stopped
     environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: admin
+      MONGO_INITDB_ROOT_USERNAME: costet86
+      MONGO_INITDB_ROOT_PASSWORD: Polina
     ports:
       - "27017:27017"
     volumes:

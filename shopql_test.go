@@ -563,6 +563,67 @@ func TestApp(t *testing.T) {
 		},
 		// ----------------------------------------------------------------------------------------
 		&ApiTestCase{
+			Name: "Rate item - ERROR(no access) - directive @authorized",
+			GQL: `
+			mutation {
+				RateItem(in: {ID: "1", Rating: 1}) {
+						id
+						name
+						inStockText
+						seller{
+							name
+						}
+						price						
+						rating
+					}
+		}`,
+			URL: gqlURL,
+			ExpectedRaw: `
+			{
+				"errors": [
+				  {
+					"message": "User not authorized",
+					"path": [
+					  "RateItem"
+					]
+				  }
+				],
+				"data": null
+			}
+			`,
+		},
+		// ----------------------------------------------------------------------------------------
+		&ApiTestCase{
+			Name: "Add comment - ERROR(no access) - directive @authorized",
+			GQL: `
+			mutation {
+				AddComment(in: {itemID: 1, text: "хороший качество"}) {
+						id
+						text
+						userName
+						item{
+							id
+							name
+							}
+					}
+		}`,
+			URL: gqlURL,
+			ExpectedRaw: `
+			{
+				"errors": [
+				  {
+					"message": "User not authorized",
+					"path": [
+					  "AddComment"
+					]
+				  }
+				],
+				"data": null
+			}
+			`,
+		},
+		// ----------------------------------------------------------------------------------------
+		&ApiTestCase{
 			Name:           "Register user1 - success",
 			URL:            "/register",
 			Method:         http.MethodPost,
@@ -613,6 +674,189 @@ func TestApp(t *testing.T) {
 		},
 		// ----------------------------------------------------------------------------------------
 		&ApiTestCase{
+			Name: "User 1 - Rate item - Success",
+			GQL: `
+			mutation {
+				RateItem(in: {ID: "1", Rating: 1}) {
+						id
+						name
+						inStockText
+						seller{
+							name
+						}
+						price						
+						rating
+					}
+		}`,
+			URL:       gqlURL,
+			TokenName: "token1",
+			ExpectedRaw: `
+			{"data":{"RateItem":{"id":1,"name":"Грокаем алгоритмы | Бхаргава Адитья","inStockText":"мало","seller":{"name":"Издательство Питер"},"price":2,"rating":1}}}
+			`,
+		},
+		// ----------------------------------------------------------------------------------------
+		&ApiTestCase{
+			Name: "User 1 - ReRate item - Success",
+			GQL: `
+			mutation {
+				RateItem(in: {ID: "1", Rating: 5}) {
+						id
+						name
+						inStockText
+						seller{
+							name
+						}
+						price						
+						rating
+					}
+		}`,
+			URL:       gqlURL,
+			TokenName: "token1",
+			ExpectedRaw: `
+			{"data":{"RateItem":{"id":1,"name":"Грокаем алгоритмы | Бхаргава Адитья","inStockText":"мало","seller":{"name":"Издательство Питер"},"price":2,"rating":5}}}
+			`,
+		},
+		// ----------------------------------------------------------------------------------------
+		&ApiTestCase{
+			Name: "Search in catalog 3, sort by quantity",
+			GQL: `
+			{
+				Search(params: {catalogID: "3", sort: STOCK_QUANTITY}) {
+				name
+  				seller{
+					name
+				}
+  				rating
+  				commentsCount
+				inStockText
+				}		
+			}
+			`,
+			URL: gqlURL,
+			ExpectedRaw: `
+			{"data":{
+				"Search":[
+					{
+						"name":"Грокаем алгоритмы | Бхаргава Адитья",
+						"seller":{"name":"Издательство Питер"},
+						"rating":5,
+						"commentsCount":0,
+						"inStockText":"мало"
+					},
+					{	
+						"name":"Теоретический минимум по Computer Science | Фило Владстон Феррейра",
+						"seller":{"name":"Издательство Питер"},
+						"rating":0,
+						"commentsCount":0,
+						"inStockText":"хватает"
+					},
+					{
+						"name":"Совершенный алгоритм. Основы | Рафгарден Тим",
+						"seller":{"name":"Издательство Питер"},
+						"rating":0,
+						"commentsCount":0,
+						"inStockText":"хватает"
+					},
+					{
+						"name":"Алгоритмы на Java | Джитер Кевин Уэйн, Седжвик Роберт",
+						"seller":{"name":"Издательство Вильямс"},
+						"rating":0,
+						"commentsCount":0,
+						"inStockText":"много"
+					}
+				]
+			}
+		}`,
+		},
+		// ----------------------------------------------------------------------------------------
+		&ApiTestCase{
+			Name: "Search in catalog 3, sort by name",
+			GQL: `
+			{
+				Search(params: {catalogID: "3", sort: NAME}) {
+				name
+  				rating
+				}		
+			}
+			`,
+			URL: gqlURL,
+			ExpectedRaw: `
+			 {"data":{
+			 	"Search":[
+					{"name":"Алгоритмы на Java | Джитер Кевин Уэйн, Седжвик Роберт","rating":0},
+					{"name":"Грокаем алгоритмы | Бхаргава Адитья","rating":5},
+					{"name":"Совершенный алгоритм. Основы | Рафгарден Тим","rating":0},
+					{"name":"Теоретический минимум по Computer Science | Фило Владстон Феррейра","rating":0}
+				]
+			}
+		}
+			 `,
+		},
+		// ----------------------------------------------------------------------------------------
+		&ApiTestCase{
+			Name: "Search in catalog 3, sort by rating, limit = 1",
+			GQL: `
+			{
+				Search(params: {catalogID: "3", sort: RATING, limit: 1,  offset: 0}) {
+				name
+  				rating
+				}		
+			}
+			`,
+			URL: gqlURL,
+			ExpectedRaw: `
+			{
+    "data": {
+        "Search": [
+            {
+                "name": "Грокаем алгоритмы | Бхаргава Адитья",
+                "rating": 5
+            }
+        ]
+    }
+}
+			 `,
+		},
+		// ----------------------------------------------------------------------------------------
+		&ApiTestCase{
+			Name: "Search, min price > 1000 - empty slice",
+			GQL: `
+			{
+				Search(params: {minPrice: 1000}) {
+				name
+  				rating
+				}		
+			}
+			`,
+			URL: gqlURL,
+			ExpectedRaw: `
+			{"data":{"Search":[]}}
+			`,
+		},
+		// ----------------------------------------------------------------------------------------
+		&ApiTestCase{
+			Name: "Search by keyword - Go",
+			GQL: `
+			{
+				Search(params: {keyword: "Go"}) {
+				name
+				}		
+			}
+			`,
+			URL: gqlURL,
+			ExpectedRaw: `
+			{"data":{
+				"Search":[
+					{"name":"Язык программирования Go | Донован Алан А. А., Керниган Брайан У."},
+					{"name":"Go на практике | Butcher Matt, Фарина Мэтт Мэтт"},				
+					{"name":"Программирование на Go. Разработка приложений XXI века | Саммерфильд Марк"},
+					{"name":"Head First. Изучаем Go | Макгаврен Джей"}					
+				]
+			}}
+			`,
+		},
+		// ----------------------------------------------------------------------------------------
+		&ApiTestCase{
 			Name: "Add to cart - first item - success",
 			GQL: `
 			mutation {
@@ -645,10 +889,296 @@ func TestApp(t *testing.T) {
                     "quantity": 2
                 }
             ],
-            "cost": 0
+            "cost": 34
         }
     }
 }			`,
+		},
+		// ----------------------------------------------------------------------------------------
+		&ApiTestCase{
+			Name: "User 2 - Add comment - ERROR(censor filter) - directive @validate",
+			GQL: `
+			mutation {
+				AddComment(in: {itemID: 1, text: "хороший качество шалава"}) {
+						id
+						text
+						userName
+						item{
+							id
+							name
+							}
+					}
+		}`,
+			URL:       gqlURL,
+			TokenName: "token2",
+			ExpectedRaw: `
+			{
+				"errors": [
+				  {
+					"message": "bad words in comment",
+					"path": [
+					  "AddComment"
+					]
+				  }
+				],
+				"data": null
+			}
+			`,
+		},
+		// ----------------------------------------------------------------------------------------
+		&ApiTestCase{
+			Name: "User 1 - Add comment - Success ",
+			GQL: `
+			mutation {
+				AddComment(in: {itemID: 12, text: "хороший качество товар"}) {
+						text
+						userName
+						item{
+							id
+							name							
+							}
+					}
+		}`,
+			URL:       gqlURL,
+			TokenName: "token1",
+			ExpectedRaw: `
+			 {"data":{"AddComment":{"text":"хороший качество товар","userName":"golang","item":{"id":12,"name":"Да Хун Пао"}}}}
+			`,
+		},
+		// ----------------------------------------------------------------------------------------
+		&ApiTestCase{
+			Name: "User 2 - Add comment - Success ",
+			GQL: `
+			mutation {
+				AddComment(in: {itemID: 12, text: "люблю этот чай"}) {
+						text
+						userName
+						item{
+							id
+							name							
+							}
+					}
+		}`,
+			URL:       gqlURL,
+			TokenName: "token2",
+			ExpectedRaw: `
+			 {"data":{"AddComment":{"text":"люблю этот чай","userName":"user","item":{"id":12,"name":"Да Хун Пао"}}}}
+			`,
+		},
+		// ----------------------------------------------------------------------------------------
+		&ApiTestCase{
+			Name: "User 2 - Update comment - Success ",
+			GQL: `
+			mutation {
+				AddComment(in: {itemID: 12, text: "чай чушь полная"}) {
+						text
+						userName
+						item{
+							id
+							name							
+							}
+					}
+		}`,
+			URL:       gqlURL,
+			TokenName: "token2",
+			ExpectedRaw: `
+			 {"data":{"AddComment":{"text":"чай чушь полная","userName":"user","item":{"id":12,"name":"Да Хун Пао"}}}}
+			`,
+		},
+		// ----------------------------------------------------------------------------------------
+		&ApiTestCase{
+			Name: "User 2 - Rate comment - Success ",
+			GQL: `
+			mutation {
+				RateComment(item: 12, user: "user", rating: 5) {
+						text
+						userName
+						rating
+						item{
+							id
+							name							
+							}
+					}
+		}`,
+			URL:       gqlURL,
+			TokenName: "token2",
+			ExpectedRaw: `
+			 {"data":{"RateComment":{"text":"чай чушь полная","userName":"user","rating":5,"item":{"id":12,"name":"Да Хун Пао"}}}}
+			`,
+		},
+		// ----------------------------------------------------------------------------------------
+		&ApiTestCase{
+			Name: "User 2 - Re Rate comment - Success ",
+			GQL: `
+			mutation {
+				RateComment(item: 12, user: "user", rating: 2) {
+						text
+						userName
+						rating
+						item{
+							id
+							name							
+							}
+					}
+		}`,
+			URL:       gqlURL,
+			TokenName: "token2",
+			ExpectedRaw: `
+			 {"data":{"RateComment":{"text":"чай чушь полная","userName":"user","rating":2,"item":{"id":12,"name":"Да Хун Пао"}}}}
+			`,
+		},
+		// ----------------------------------------------------------------------------------------
+		&ApiTestCase{
+			Name: "User 1 - Rate comment - Success ",
+			GQL: `
+			mutation {
+				RateComment(item: 12, user: "user", rating: 4) {
+						text
+						userName
+						rating
+						item{
+							id
+							name							
+							}
+					}
+		}`,
+			URL:       gqlURL,
+			TokenName: "token1",
+			ExpectedRaw: `
+			 {"data":{"RateComment":{"text":"чай чушь полная","userName":"user","rating":3,"item":{"id":12,"name":"Да Хун Пао"}}}}
+			`,
+		},
+		// ----------------------------------------------------------------------------------------
+		&ApiTestCase{
+			Name: "Search, sort by COMMENTS_COUNT with limit",
+			GQL: `
+			{
+				Search(params: {sort: COMMENTS_COUNT, limit: 5}) {
+				name
+  				commentsCount
+				}		
+			}
+			`,
+			URL: gqlURL,
+			ExpectedRaw: `{
+				"data":{
+					"Search":[
+						{"name":"Да Хун Пао","commentsCount":2},
+						{"name":"Алгоритмы на Java | Джитер Кевин Уэйн, Седжвик Роберт","commentsCount":0},
+						{"name":"Язык программирования Go | Донован Алан А. А., Керниган Брайан У.","commentsCount":0},
+						{"name":"Теоретический минимум по Computer Science | Фило Владстон Феррейра","commentsCount":0},
+						{"name":"Грокаем алгоритмы | Бхаргава Адитья","commentsCount":0}
+					]
+				}
+			}
+			 `,
+		},
+		// ----------------------------------------------------------------------------------------
+		&ApiTestCase{
+			Name: "Search, catalog 5, sort by price with limit && offset",
+			GQL: `
+			{
+				Search(params: {catalogID: "5", sort: PRICE, limit: 2, offset: 2}) {
+				name
+  				inStockText
+				price
+				}		
+			}
+			`,
+			URL: gqlURL,
+			ExpectedRaw: `{
+				"data":{
+					"Search":[
+						{"name":"Дянь Хун","inStockText":"хватает","price":14},
+						{"name":"Да Хун Пао","inStockText":"хватает","price":17}
+					]
+				}
+			}
+			 `,
+		},
+		// ----------------------------------------------------------------------------------------
+		&ApiTestCase{
+			Name: "Catalog page with param and items list and pagination, items with comments",
+			GQL: `
+			{
+				Catalog(ID: "5") {
+					id
+					name
+					items(limit: 3, offset: 3) {
+					id
+					name
+					comments {
+						userName
+						text
+						}
+					}
+				}
+			}
+			`,
+			URL: gqlURL,
+			ExpectedRaw: `
+			{
+			"data":{
+				"Catalog":{
+					"id":5,
+					"name":"Чай",
+					"items":[
+						{"id":12,
+						"name":"Да Хун Пао",
+						"comments":[
+							{"userName":"user",	"text":"чай чушь полная"},
+							{"userName":"golang","text":"хороший качество товар"}]
+						},
+						{"id":13,
+						"name":"Габа Улун",
+						"comments":[]
+						}
+					]
+				}
+			}
+		}
+			`,
+		},
+		// ----------------------------------------------------------------------------------------
+		&ApiTestCase{
+			Name: "Catalog page with param and items list and pagination, items with comments list and pagination",
+			GQL: `
+			{
+				Catalog(ID: "5") {
+					id
+					name
+					items(limit: 1, offset: 3) {
+					id
+					name
+					commentsCount
+					comments(limit: 1, offset: 0) {
+						userName
+						text
+						}
+					}
+				}
+			}
+			`,
+			URL: gqlURL,
+			ExpectedRaw: `
+			{
+			"data":{
+				"Catalog":{
+					"id":5,
+					"name":"Чай",
+					"items":[
+						{"id":12,
+						"name":"Да Хун Пао",
+						"commentsCount": 2,
+						"comments":[
+							{"userName":"user",	"text":"чай чушь полная"}
+							]
+						}
+					]
+				}
+			}
+		}
+			`,
 		},
 		// ----------------------------------------------------------------------------------------
 		&ApiTestCase{
@@ -816,8 +1346,10 @@ func TestApp(t *testing.T) {
 					name
 					inStockText
 				  }
-				  quantity
+				  quantity				  
 				}
+				  cost
+				  count
 			}
 		}
 			`,
@@ -837,7 +1369,9 @@ func TestApp(t *testing.T) {
 					  },
 					  "quantity": 4
 					}
-				  ]
+				  ],
+				  "cost": 68,
+				  "count": 4
 				}
 			}
 		}
@@ -873,31 +1407,31 @@ func TestApp(t *testing.T) {
 						"id": 9,
 						"name": "Си Пу Юань, Шен Пуэр",
 						"inCart": 0,
-						"price":0
+						"price":10
 					  },
 					  {
 						"id": 10,
 						"name": "Мэнхай 7542, Шен Пуэр",
 						"inCart": 0,
-						"price":0
+						"price":12
 					  },
 					  {
 						"id": 11,
 						"name": "Дянь Хун",
 						"inCart": 0,
-						"price":0
+						"price":14
 					  },
 					  {
 						"id": 12,
 						"name": "Да Хун Пао",
 						"inCart": 4,
-						"price":0
+						"price":17
 					  },
 					  {
 						"id": 13,
 						"name": "Габа Улун",
 						"inCart": 0,
-						"price":0
+						"price":17
 					  }
 					]
 				  }

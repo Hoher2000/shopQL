@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"strings"
@@ -12,7 +13,9 @@ import (
 	"github.com/99designs/gqlgen/graphql/handler/lru"
 	"github.com/99designs/gqlgen/graphql/handler/transport"
 	"github.com/99designs/gqlgen/graphql/playground"
+	"github.com/Hoher2000/shopQL/censor"
 	"github.com/Hoher2000/shopQL/graph"
+	"github.com/Hoher2000/shopQL/graph/model"
 	"github.com/Hoher2000/shopQL/storage"
 	"github.com/vektah/gqlparser/v2/ast"
 	"github.com/vektah/gqlparser/v2/gqlerror"
@@ -28,7 +31,8 @@ var tokenContextKey = contextKey("token")
 func NewMongoClient(mongoURI string) *mongo.Client {
 	options := options.
 		Client().
-		ApplyURI(mongoURI)
+		ApplyURI(mongoURI).
+		SetAuth(options.Credential{Username: "costet86", Password: "Polina"})
 
 	client, err := mongo.Connect(options)
 	if err != nil {
@@ -76,14 +80,37 @@ func GetApp() http.Handler {
 	}()*/
 	shopDB := storage.NewMongoDB(cl)
 	userRepo := NewUserRepo(cl, "gpaphquerylanguage")
+	orderRepo := NewOrderRepo(cl)
 	if err := shopDB.ParseShop("testdata.json"); err != nil {
 		log.Fatal(err)
 	}
-	config := graph.Config{Resolvers: &graph.Resolver{Shop: shopDB, User: userRepo}}
+	config := graph.Config{Resolvers: &graph.Resolver{Shoper: shopDB, Order: orderRepo, Userer: userRepo}}
+	config.Directives.Validate = func(ctx context.Context, obj any, next graphql.Resolver) (res any, err error) {
+		//log.Printf("validate obj - %v, args - %v\n", obj, graphql.GetFieldContext(ctx).Args)
+		args := graphql.GetFieldContext(ctx).Args
+		comment := args["in"].(model.CommentInput).Text
+		if w, ok := censor.Is(comment); ok {
+			log.Printf("@validate directive - bad word %v\n", w)
+			graphql.AddError(ctx, &gqlerror.Error{
+				Message: "bad words in comment",
+				Path:    graphql.GetFieldContext(ctx).Path(),
+			})
+			return nil, nil
+		}
+		return next(ctx)
+	}
 	config.Directives.Auth = func(ctx context.Context, obj any, next graphql.Resolver) (res any, err error) {
 		token := TokenFromCtx(ctx)
 		newCtx, err := userRepo.CheckJWT(ctx, token)
 		if err != nil {
+			if errors.Is(err, errDB) {
+				log.Printf("@auth directive - DB error %v\n", err)
+				graphql.AddError(ctx, &gqlerror.Error{
+					Message: "Internal server errroe",
+					Path:    graphql.GetFieldContext(ctx).Path(),
+				})
+				return nil, nil
+			}
 			log.Printf("@auth directive - bad token %v\n", err)
 			graphql.AddError(ctx, &gqlerror.Error{
 				Message: "User not authorized",

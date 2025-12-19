@@ -2,13 +2,103 @@
 
 package model
 
+import (
+	"bytes"
+	"fmt"
+	"io"
+	"strconv"
+)
+
 type CartItemInput struct {
 	ItemID   string `json:"itemID"`
 	Quantity int    `json:"quantity"`
+}
+
+type CommentInput struct {
+	ItemID string `json:"itemID"`
+	Text   string `json:"text"`
 }
 
 type Mutation struct {
 }
 
 type Query struct {
+}
+
+type RateInput struct {
+	ID     string `json:"ID"`
+	Rating int    `json:"Rating"`
+}
+
+type SearchParameters struct {
+	CatalogID *string `json:"catalogID,omitempty"`
+	Keyword   *string `json:"keyword,omitempty"`
+	Sort      SortBy  `json:"sort"`
+	MinPrice  *int    `json:"minPrice,omitempty"`
+	MaxPrice  *int    `json:"maxPrice,omitempty"`
+	Limit     *int    `json:"limit,omitempty"`
+	Offset    *int    `json:"offset,omitempty"`
+}
+
+type SortBy string
+
+const (
+	SortByPrice         SortBy = "PRICE"
+	SortByName          SortBy = "NAME"
+	SortByRating        SortBy = "RATING"
+	SortByCommentsCount SortBy = "COMMENTS_COUNT"
+	SortByStockQuantity SortBy = "STOCK_QUANTITY"
+	SortByCreatedAt     SortBy = "CREATED_AT"
+)
+
+var AllSortBy = []SortBy{
+	SortByPrice,
+	SortByName,
+	SortByRating,
+	SortByCommentsCount,
+	SortByStockQuantity,
+	SortByCreatedAt,
+}
+
+func (e SortBy) IsValid() bool {
+	switch e {
+	case SortByPrice, SortByName, SortByRating, SortByCommentsCount, SortByStockQuantity, SortByCreatedAt:
+		return true
+	}
+	return false
+}
+
+func (e SortBy) String() string {
+	return string(e)
+}
+
+func (e *SortBy) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = SortBy(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid SortBy", str)
+	}
+	return nil
+}
+
+func (e SortBy) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *SortBy) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e SortBy) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
 }

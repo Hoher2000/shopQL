@@ -7,15 +7,15 @@ package graph
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
-	"strconv"
 
 	custom "github.com/Hoher2000/shopQL/customModels"
 	"github.com/Hoher2000/shopQL/graph/model"
 )
 
 // Items is the resolver for the items field.
-func (r *cartResolver) Items(ctx context.Context, obj *custom.Cart) ([]*custom.OrderItem, error) {
+func (r *cartResolver) Items(ctx context.Context, obj *custom.Cart) ([]*custom.CartItem, error) {
 	if obj == nil {
 		return nil, errors.New("cart object cannot be nil")
 	}
@@ -41,7 +41,7 @@ func (r *cartResolver) Cost(ctx context.Context, obj *custom.Cart) (int, error) 
 	}
 	sum := 0
 	for i := range obj.CartItems {
-		price, err := r.Shop.GetItemPrice(ctx, obj.CartItems[i].ItemID)
+		price, err := r.Shoper.GetItemPrice(ctx, obj.CartItems[i].ItemID)
 		if err != nil {
 			return -1, err
 		}
@@ -50,12 +50,17 @@ func (r *cartResolver) Cost(ctx context.Context, obj *custom.Cart) (int, error) 
 	return sum, nil
 }
 
+// Item is the resolver for the item field.
+func (r *cartItemResolver) Item(ctx context.Context, obj *custom.CartItem) (*custom.Item, error) {
+	panic(fmt.Errorf("not implemented: Item - item"))
+}
+
 // Childs is the resolver for the childs field.
 func (r *catalogResolver) Childs(ctx context.Context, obj *custom.Catalog) ([]*custom.Catalog, error) {
 	if obj == nil {
 		return nil, errors.New("catalog object cannot be nil")
 	}
-	return r.Shop.GetCatChilds(ctx, obj.ID)
+	return r.Shoper.GetCatChilds(ctx, obj.ID)
 }
 
 // Parent is the resolver for the parent field.
@@ -63,7 +68,7 @@ func (r *catalogResolver) Parent(ctx context.Context, obj *custom.Catalog) (*cus
 	if obj == nil {
 		return nil, errors.New("catalog object cannot be nil")
 	}
-	return r.Shop.GetCatalog(ctx, obj.ParentID)
+	return r.Shoper.GetCatalog(ctx, obj.ParentID)
 }
 
 // Items is the resolver for the items field.
@@ -71,7 +76,25 @@ func (r *catalogResolver) Items(ctx context.Context, obj *custom.Catalog, limit 
 	if obj == nil {
 		return nil, errors.New("catalog object cannot be nil")
 	}
-	return r.Shop.GetCatItems(ctx, obj.ID, limit, offset)
+	return r.Shoper.GetCatItems(ctx, obj.ID, limit, offset)
+}
+
+// UserName is the resolver for the userName field.
+func (r *commentResolver) UserName(ctx context.Context, obj *custom.Comment) (string, error) {
+	panic(fmt.Errorf("not implemented: UserName - userName"))
+}
+
+// Item is the resolver for the item field.
+func (r *commentResolver) Item(ctx context.Context, obj *custom.Comment) (*custom.Item, error) {
+	if obj == nil {
+		return nil, errors.New("comment object cannot be nil")
+	}
+	return r.Shoper.GetItem(ctx, obj.ItemID)
+}
+
+// Rating is the resolver for the rating field.
+func (r *commentResolver) Rating(ctx context.Context, obj *custom.Comment) (float64, error) {
+	return r.Shoper.GetCommentRating(ctx, obj.ItemID, obj.UserID)
 }
 
 // InStockText is the resolver for the inStockText field.
@@ -96,7 +119,7 @@ func (r *itemResolver) InCart(ctx context.Context, obj *custom.Item) (int, error
 	if obj == nil {
 		return -1, errors.New("item object cannot be nil")
 	}
-	return r.User.GetItemCountInCart(ctx, obj.ID)
+	return r.Order.GetItemCountInCart(ctx, obj.ID)
 }
 
 // Seller is the resolver for the seller field.
@@ -104,7 +127,7 @@ func (r *itemResolver) Seller(ctx context.Context, obj *custom.Item) (*custom.Se
 	if obj == nil {
 		return nil, errors.New("item object cannot be nil")
 	}
-	return r.Shop.GetSeller(ctx, obj.SellerID)
+	return r.Shoper.GetSeller(ctx, obj.SellerID)
 }
 
 // Catalog is the resolver for the catalog field.
@@ -112,7 +135,7 @@ func (r *itemResolver) Catalog(ctx context.Context, obj *custom.Item) (*custom.C
 	if obj == nil {
 		return nil, errors.New("item object cannot be nil")
 	}
-	return r.Shop.GetCatalog(ctx, obj.CatalogID)
+	return r.Shoper.GetCatalog(ctx, obj.CatalogID)
 }
 
 // Parent is the resolver for the parent field.
@@ -120,124 +143,193 @@ func (r *itemResolver) Parent(ctx context.Context, obj *custom.Item) (*custom.Ca
 	if obj == nil {
 		return nil, errors.New("item object cannot be nil")
 	}
-	return r.Shop.GetCatalog(ctx, obj.CatalogID)
+	return r.Shoper.GetCatalog(ctx, obj.CatalogID)
+}
+
+// Comments is the resolver for the comments field.
+func (r *itemResolver) Comments(ctx context.Context, obj *custom.Item, limit *int, offset *int) ([]*custom.Comment, error) {
+	if obj == nil {
+		return nil, errors.New("item object cannot be nil")
+	}
+	return r.Shoper.GetItemComments(ctx, obj.ID, limit, offset)
 }
 
 // AddToCart is the resolver for the AddToCart field.
 func (r *mutationResolver) AddToCart(ctx context.Context, in model.CartItemInput) (*custom.Cart, error) {
-	id, err := strconv.Atoi(in.ItemID)
+	if in.Quantity < 1 {
+		log.Printf("AddToCartResolver: invalid quantity - must be greater than 1")
+		return nil, errors.New("invalid quantity - must be greater than 1")
+	}
+
+	// TODO - to add getting userID and give it to Order methods
+
+	inStock, err := r.Shoper.GetItemInStock(ctx, in.ItemID)
 	if err != nil {
-		log.Printf("AddToCart: convert ID error - %v\n", err)
+		log.Printf("AddToCartResolver: GetItemInStock error - %v\n", err)
 		return nil, err
 	}
-	inStock, err := r.Shop.GetItemInStock(ctx, id)
+
 	if in.Quantity > inStock {
-		log.Printf("AddToCart: not enough quantity, get - %v, in stock - %v\n", in.Quantity, inStock)
+		log.Printf("AddToCartResolver: not enough quantity, get - %v, in stock - %v\n", in.Quantity, inStock)
 		return nil, errors.New("not enough quantity")
 	}
 
-	if err = r.Shop.UpdateItemInStock(ctx, id, inStock-in.Quantity); err != nil {
-		log.Printf("AddToCart: UpdateItemInStock error - %v\n", err)
-		return nil, err
-	}
-
-	cart, err := r.User.GetUserCart(ctx)
+	curQuantity, err := r.Order.GetItemCountInCart(ctx, in.ItemID)
 	if err != nil {
-		log.Printf("AddToCart: GetUserCart error - %v\n", err)
+		log.Printf("AddToCartResolver: GetItemCountInCart error - %v\n", err)
 		return nil, err
 	}
 
-	flag := true
-	for i := range cart.CartItems {
-		if id == cart.CartItems[i].ItemID {
-			cart.CartItems[i].Quantity += in.Quantity
-			flag = false
-			break
+	if curQuantity > 0 {
+		if err := r.Order.UpdateItemInCart(ctx, in.ItemID, in.Quantity); err != nil {
+			log.Printf("AddToCartResolver: UpdateItemInCart error - %v\n", err)
+			return nil, err
+		}
+	} else {
+		if err := r.Order.AddItemToCart(ctx, in.ItemID, in.Quantity); err != nil {
+			log.Printf("AddToCartResolver: AddItemToCart error - %v\n", err)
+			return nil, err
 		}
 	}
-	if flag {
-		cart.CartItems = append(cart.CartItems, &custom.OrderItem{ItemID: id, Quantity: in.Quantity})
-	}
 
-	if err = r.User.UpdateUserCart(ctx, cart); err != nil {
-		log.Printf("AddToCart: UpdateUserCart error - %v\n", err)
+	cart, err := r.Order.GetUserCart(ctx)
+
+	if err != nil {
+		log.Printf("AddToCartResolver: GetUserCart error - %v\n", err)
 		return nil, err
 	}
-	log.Printf("AddToCart: succes, item - %v, count - %v\n", in.ItemID, in.Quantity)
+
+	if err = r.Shoper.UpdateItemInStock(ctx, in.ItemID, -in.Quantity); err != nil {
+		log.Printf("AddToCartResolver: UpdateItemInStock error - %v\n", err)
+		return nil, err
+	}
+
+	log.Printf("AddToCartResolver: succes, item - %v, count - %v\n", in.ItemID, in.Quantity)
 	return cart, nil
 }
 
 // RemoveFromCart is the resolver for the RemoveFromCart field.
 func (r *mutationResolver) RemoveFromCart(ctx context.Context, in model.CartItemInput) (*custom.Cart, error) {
-	id, err := strconv.Atoi(in.ItemID)
+	if in.Quantity < 1 {
+		log.Printf("RemoveFromCartResolver: invalid quantity - must be greater than 1")
+		return nil, errors.New("invalid quantity - must be greater than 1")
+	}
+
+	// TODO - to add getting userID and give it to Order methods
+
+	curQuantity, err := r.Order.GetItemCountInCart(ctx, in.ItemID)
 	if err != nil {
+		log.Printf("RemoveFromCartResolver: GetItemCountInCart error - %v\n", err)
 		return nil, err
 	}
-	cart, err := r.User.GetUserCart(ctx)
-	if err != nil {
-		return nil, err
+
+	if curQuantity < in.Quantity {
+		log.Printf("RemoveFromCartResolver: not enough quantity, get - %v, in cart - %v\n", in.Quantity, curQuantity)
+		return nil, errors.New("not enough quantity")
 	}
-	flag := true
-	for i := range cart.CartItems {
-		if cart.CartItems[i].ItemID == id {
-			if in.Quantity > cart.CartItems[i].Quantity {
-				return nil, errors.New("removing quantity is greater then cart quantity")
-			}
-			cart.CartItems[i].Quantity -= in.Quantity
-			if cart.CartItems[i].Quantity < 1 {
-				cart.CartItems = append(cart.CartItems[:i], cart.CartItems[i+1:]...)
-			}
-			flag = false
-			break
+
+	if curQuantity != in.Quantity {
+		if err := r.Order.UpdateItemInCart(ctx, in.ItemID, -in.Quantity); err != nil {
+			log.Printf("RemoveFromCartResolver: UpdateItemInCart error - %v\n", err)
+			return nil, err
+		}
+	} else {
+		if err := r.Order.DeleteItemFromCart(ctx, in.ItemID); err != nil {
+			log.Printf("RemoveFromCartResolver: DeleteItemFromCart error - %v\n", err)
+			return nil, err
 		}
 	}
-	if flag {
-		return nil, errors.New("this item is not in cart")
-	}
-	inStock, err := r.Shop.GetItemInStock(ctx, id)
+
+	cart, err := r.Order.GetUserCart(ctx)
 	if err != nil {
-		return nil, err
-	}
-	if err = r.Shop.UpdateItemInStock(ctx, id, inStock+in.Quantity); err != nil {
-		return nil, err
-	}
-
-	if err = r.User.UpdateUserCart(ctx, cart); err != nil {
+		log.Printf("RemoveFromCartResolver: GetUserCart error - %v\n", err)
 		return nil, err
 	}
 
+	if err = r.Shoper.UpdateItemInStock(ctx, in.ItemID, in.Quantity); err != nil {
+		log.Printf("RemoveFromCartResolver: UpdateItemInStock error - %v\n", err)
+		return nil, err
+	}
+
+	log.Printf("RemoveFromCartResolver: succes, item - %v, count - %v\n", in.ItemID, in.Quantity)
 	return cart, nil
 }
 
-// Item is the resolver for the item field.
-func (r *orderItemResolver) Item(ctx context.Context, obj *custom.OrderItem) (*custom.Item, error) {
-	if obj == nil {
-		return nil, errors.New("order item object cannot be nil")
+// AddComment is the resolver for the AddComment field.
+func (r *mutationResolver) AddComment(ctx context.Context, in model.CommentInput) (*custom.Comment, error) {
+	userName, err := r.Userer.GetUserName(ctx)
+	if err != nil {
+		return nil, err
 	}
-	return r.Shop.GetItem(ctx, obj.ItemID)
+	return r.Shoper.AddItemComment(ctx, in.ItemID, in.Text, userName)
+}
+
+// RateItem is the resolver for the RateItem field.
+func (r *mutationResolver) RateItem(ctx context.Context, in model.RateInput) (*custom.Item, error) {
+	if err := r.Shoper.RateItem(ctx, in.ID, in.Rating); err != nil {
+		return nil, err
+	}
+	newRating, err := r.Shoper.GetItemRating(ctx, in.ID)
+	if err != nil {
+		return nil, err
+	}
+	return r.Shoper.UpdateItemRating(ctx, in.ID, newRating)
+}
+
+// RateComment is the resolver for the RateComment field.
+func (r *mutationResolver) RateComment(ctx context.Context, item string, user string, rating int) (*custom.Comment, error) {
+	if err := r.Shoper.RateItemComment(ctx, item, user, rating); err != nil {
+		return nil, err
+	}
+	return r.Shoper.GetComment(ctx, item, user)
+}
+
+// MakeOrder is the resolver for the MakeOrder field.
+func (r *mutationResolver) MakeOrder(ctx context.Context) (*custom.Order, error) {
+	panic(fmt.Errorf("not implemented: MakeOrder - MakeOrder"))
 }
 
 // Catalog is the resolver for the Catalog field.
 func (r *queryResolver) Catalog(ctx context.Context, id string) (*custom.Catalog, error) {
-	idInt, err := strconv.Atoi(id)
-	if err != nil {
-		return nil, err
-	}
-	return r.Shop.GetCatalog(ctx, idInt)
+	return r.Shoper.GetCatalog(ctx, id)
 }
 
 // Seller is the resolver for the Seller field.
 func (r *queryResolver) Seller(ctx context.Context, id string) (*custom.Seller, error) {
-	idInt, err := strconv.Atoi(id)
-	if err != nil {
-		return nil, err
-	}
-	return r.Shop.GetSeller(ctx, idInt)
+	return r.Shoper.GetSeller(ctx, id)
+}
+
+// Item is the resolver for the Item field.
+func (r *queryResolver) Item(ctx context.Context, id string) (*custom.Item, error) {
+	return r.Shoper.GetItem(ctx, id)
 }
 
 // MyCart is the resolver for the MyCart field.
 func (r *queryResolver) MyCart(ctx context.Context) (*custom.Cart, error) {
-	return r.User.GetUserCart(ctx)
+	return r.Order.GetUserCart(ctx)
+}
+
+// Search is the resolver for the Search field.
+func (r *queryResolver) Search(ctx context.Context, params *model.SearchParameters) ([]*custom.Item, error) {
+	if params == nil {
+		log.Printf("SearchResolver - nil params")
+		return nil, errors.New("search params must be not null")
+	}
+	limit := 10
+	if params.Limit != nil && *params.Limit > 0 {
+		limit = min(*params.Limit, 100)
+	}
+	*params.Limit = limit
+	offset := 0
+	if params.Offset != nil && *params.Offset > 0 {
+		offset = *params.Offset
+	}
+	*params.Offset = offset
+	if params.MinPrice != nil && params.MaxPrice != nil && *params.MinPrice > *params.MaxPrice {
+		log.Printf("SearchResolver - minprice is gt maxprice")
+		return nil, errors.New("minprice must be lt maxprice")
+	}
+	return r.Shoper.SearchItem(ctx, params)
 }
 
 // Items is the resolver for the items field.
@@ -245,14 +337,25 @@ func (r *sellerResolver) Items(ctx context.Context, obj *custom.Seller, limit *i
 	if obj == nil {
 		return nil, errors.New("seller object cannot be nil")
 	}
-	return r.Shop.GetSellerItems(ctx, obj.ID, limit, offset)
+	return r.Shoper.GetSellerItems(ctx, obj.ID, limit, offset)
+}
+
+// Items is the resolver for the items field.
+func (r *userOrderResolver) Items(ctx context.Context, obj *custom.Order) (*custom.OrderItem, error) {
+	panic(fmt.Errorf("not implemented: Items - items"))
 }
 
 // Cart returns CartResolver implementation.
 func (r *Resolver) Cart() CartResolver { return &cartResolver{r} }
 
+// CartItem returns CartItemResolver implementation.
+func (r *Resolver) CartItem() CartItemResolver { return &cartItemResolver{r} }
+
 // Catalog returns CatalogResolver implementation.
 func (r *Resolver) Catalog() CatalogResolver { return &catalogResolver{r} }
+
+// Comment returns CommentResolver implementation.
+func (r *Resolver) Comment() CommentResolver { return &commentResolver{r} }
 
 // Item returns ItemResolver implementation.
 func (r *Resolver) Item() ItemResolver { return &itemResolver{r} }
@@ -260,19 +363,21 @@ func (r *Resolver) Item() ItemResolver { return &itemResolver{r} }
 // Mutation returns MutationResolver implementation.
 func (r *Resolver) Mutation() MutationResolver { return &mutationResolver{r} }
 
-// OrderItem returns OrderItemResolver implementation.
-func (r *Resolver) OrderItem() OrderItemResolver { return &orderItemResolver{r} }
-
 // Query returns QueryResolver implementation.
 func (r *Resolver) Query() QueryResolver { return &queryResolver{r} }
 
 // Seller returns SellerResolver implementation.
 func (r *Resolver) Seller() SellerResolver { return &sellerResolver{r} }
 
+// UserOrder returns UserOrderResolver implementation.
+func (r *Resolver) UserOrder() UserOrderResolver { return &userOrderResolver{r} }
+
 type cartResolver struct{ *Resolver }
+type cartItemResolver struct{ *Resolver }
 type catalogResolver struct{ *Resolver }
+type commentResolver struct{ *Resolver }
 type itemResolver struct{ *Resolver }
 type mutationResolver struct{ *Resolver }
-type orderItemResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
 type sellerResolver struct{ *Resolver }
+type userOrderResolver struct{ *Resolver }

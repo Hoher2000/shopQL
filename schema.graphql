@@ -11,10 +11,42 @@ directive @goField(
 ) on INPUT_FIELD_DEFINITION | FIELD_DEFINITION
 
 directive @auth on FIELD_DEFINITION
+directive @validate on INPUT_FIELD_DEFINITION | FIELD_DEFINITION | ARGUMENT_DEFINITION
+
+scalar Time 
 
 input CartItemInput {
   itemID: ID!
   quantity: Int!
+}
+
+input CommentInput {
+  itemID: ID!
+  text: String! 
+}
+
+input RateInput {
+  ID: ID!
+  Rating: Int!
+}
+
+enum SortBy {
+  PRICE
+  NAME
+  RATING
+  COMMENTS_COUNT 
+  STOCK_QUANTITY
+  CREATED_AT
+}
+
+input SearchParameters {
+  catalogID: ID         
+  keyword: String        
+  sort: SortBy! = PRICE  
+  minPrice: Int
+  maxPrice: Int
+  limit: Int = 10
+  offset: Int = 0
 }
 
 type Seller @goModel(model: "github.com/Hoher2000/shopQL/customModels.Seller") {
@@ -33,6 +65,19 @@ type Item @goModel(model: "github.com/Hoher2000/shopQL/customModels.Item") {
   catalog: Catalog! @goField(forceResolver: true)
   parent: Catalog! @goField(forceResolver: true)
   price: Int!
+  comments(limit: Int = 3, offset: Int = 0): [Comment!]! @goField(forceResolver: true)
+  rating: Float! #@goField(forceResolver: true)
+  commentsCount: Int!
+}
+
+type Comment @goModel(model: "github.com/Hoher2000/shopQL/customModels.Comment") {
+  id: ID!
+  text: String!
+  userName: String!
+  item: Item! @goField(forceResolver: true)
+  rating: Float! @goField(forceResolver: true)
+  createdAt: Time!
+  updatedAt: Time!
 }
 
 type Catalog @goModel(model: "github.com/Hoher2000/shopQL/customModels.Catalog") {
@@ -43,24 +88,45 @@ type Catalog @goModel(model: "github.com/Hoher2000/shopQL/customModels.Catalog")
   items(limit: Int = 3, offset: Int = 0): [Item!]! @goField(forceResolver: true) 
 }
 
-type OrderItem @goModel(model: "github.com/Hoher2000/shopQL/customModels.OrderItem") {
+type CartItem @goModel(model: "github.com/Hoher2000/shopQL/customModels.CartItem") {
   item: Item! @goField(forceResolver: true)
   quantity: Int!
 }
 
 type Cart @goModel(model: "github.com/Hoher2000/shopQL/customModels.Cart") {
-   items: [OrderItem!]! 
+   items: [CartItem!]! @goField(forceResolver: true)
    count: Int! @goField(forceResolver: true)
    cost: Int! @goField(forceResolver: true)
+}
+
+type InOrderItem @goModel(model: "github.com/Hoher2000/shopQL/customModels.OrderItem") {
+  id: ID!        
+	itemID: String!
+	itemName:      String!
+	purchasePrice: Int!
+	quantity:     Int!
+}
+
+type UserOrder @goModel(model: "github.com/Hoher2000/shopQL/customModels.Order") {
+    id: ID!
+    userID: ID!
+    createdAt: Time!
+    items: InOrderItem! @goField(forceResolver: true)
 }
 
 type Query {
   Catalog(ID: ID!): Catalog 
   Seller(ID: ID!): Seller!
+  Item(ID: ID!): Item!
   MyCart: Cart! @auth
+  Search(params: SearchParameters): [Item!]!
 }
 
 type Mutation {
   AddToCart(in: CartItemInput!): Cart! @auth
   RemoveFromCart(in: CartItemInput!): Cart! @auth
+  AddComment(in: CommentInput!): Comment! @auth  @validate
+  RateItem(in: RateInput!): Item! @auth
+  RateComment(item: ID!, user: String!, rating: Int!): Comment! @auth
+  MakeOrder: UserOrder! @auth
 }

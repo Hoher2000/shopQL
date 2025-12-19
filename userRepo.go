@@ -8,9 +8,10 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
-	custom "github.com/Hoher2000/shopQL/customModels"
+	"github.com/Hoher2000/shopQL/utils"
 	"github.com/go-playground/validator/v10"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/thanhpk/randstr"
@@ -26,13 +27,10 @@ const (
 )
 
 var (
-	errUserExist            = errors.New("user with same login|email already exist")
-	errDB                   = errors.New("internal database error")
-	errBadToken             = errors.New("invalid token or claims")
-	userKey      ctxUserKey = "userID"
+	errUserExist = errors.New("user with same login|email already exist")
+	errDB        = errors.New("internal database error")
+	errBadToken  = errors.New("invalid token or claims")
 )
-
-type ctxUserKey string
 
 type User struct {
 	ID       bson.ObjectID `json:"id" bson:"_id"`
@@ -40,7 +38,6 @@ type User struct {
 	Email    string        `json:"email" bson:"email, unique" validate:"required,email"`
 	Password string        `json:"password" bson:"password" validate:"required,min=4"`
 	Version  int           `json:"version" bson:"version"`
-	Cart     *custom.Cart  `json:"cart" bson:"cart"`
 }
 
 type CustomClaims struct {
@@ -51,14 +48,61 @@ type CustomClaims struct {
 type UserRepo struct {
 	*mongo.Client
 	Secret []byte
+	cache  map[bson.ObjectID]struct {
+		createdAT time.Time
+		userVer   int
+	}
+	mu sync.RWMutex
 }
 
 func NewUserRepo(cl *mongo.Client, secret string) *UserRepo {
-	return &UserRepo{cl, []byte(secret)}
+	r := &UserRepo{
+		cl,
+		[]byte(secret),
+		map[bson.ObjectID]struct {
+			createdAT time.Time
+			userVer   int
+		}{},
+		sync.RWMutex{},
+	}
+	go r.initCaching(5)
+	return r
+}
+
+func (u *UserRepo) initCaching(d int) {
+	ticker := time.NewTicker(time.Duration(d) * time.Second)
+	for range ticker.C {
+		u.mu.Lock()
+		for id, data := range u.cache {
+			if time.Since(data.createdAT) > 5*time.Minute {
+				delete(u.cache, id)
+			}
+		}
+		u.mu.Unlock()
+	}
 }
 
 func (u *UserRepo) Coll() *mongo.Collection {
 	return u.Database(dbName).Collection(userCollName)
+}
+
+func (u *UserRepo) GetUserName(ctx context.Context) (string, error) {
+	userID, err := utils.GetUserObjectIDFromCtx(ctx)
+	if err != nil {
+		log.Printf("ALERT: %v - fetching User ID from context: %v\n", utils.GetFuncName(1), err)
+		return "", err
+	}
+	filter := bson.M{"_id": userID}
+	var res struct {
+		Name string `bson:"username"`
+	}
+	opts := options.FindOne().SetProjection(bson.M{"username": 1})
+	if err := u.Coll().FindOne(ctx, filter, opts).Decode(&res); err != nil {
+		log.Printf("ERROR: %v - finding in mongo: %v\n", utils.GetFuncName(1), err)
+		return "", errDB
+	}
+	log.Printf("SUCCESS: %v. User ID - %v, username - %v\n", utils.GetFuncName(1), userID.Hex(), res.Name)
+	return res.Name, nil
 }
 
 func (u *UserRepo) hashPass(plainPassword, salt string) []byte {
@@ -79,85 +123,101 @@ func (u *UserRepo) Create(ctx context.Context, user *User) (*User, error) {
 	}
 	count, err := u.Coll().CountDocuments(ctx, filter)
 	if err != nil {
-		log.Printf("User creating: checking email && name error - %v\n", err)
+		log.Printf("ERROR: %v - finding in mongo: %v\n", utils.GetFuncName(1), err)
 		return nil, errDB
 	}
 	if count > 0 {
-		log.Printf("User creating: user with same credentials already exist - %v\n", err)
+		log.Printf("ALERT: %v - user with same credentials: %v, %v is already exist.\n", utils.GetFuncName(1), user.Name, user.Email)
 		return nil, errUserExist
 	}
 	user.Password = string(u.hashPass(user.Password, randstr.String(10)))
-	user.Cart = &custom.Cart{CartItems: make([]*custom.OrderItem, 0)}
+	//user.Cart = &custom.Cart{CartItems: make([]*custom.OrderItem, 0)}
 	user.ID = bson.NewObjectID()
 	_, err = u.Coll().InsertOne(ctx, user)
 	if err != nil {
-		log.Printf("User creating: user inserting error - %v\n", err)
+		log.Printf("ERROR: %v - inserting in mongo: %v\n", utils.GetFuncName(1), err)
 		return nil, errDB
 	}
-	log.Printf("User creating: user %v is created, ID - %v\n", user.Name, user.ID)
+	log.Printf("SUCCESS: %v. User is created, ID - %v, username - %v\n", utils.GetFuncName(1), user.ID.Hex(), user.Name)
 	return user, nil
 }
 
 func (u *UserRepo) CheckJWT(ctx context.Context, tokenString string) (context.Context, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &CustomClaims{}, func(token *jwt.Token) (any, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			log.Printf("CheckJWT: bad signing method - %v\n", token.Header["alg"])
+			log.Printf("ALERT: %v - bad signing method - %v\n", utils.GetFuncName(1), token.Header["alg"])
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return u.Secret, nil
 	})
 	if err != nil {
-		log.Printf("CheckJWT: failed to parse token - %v\n", err)
+		log.Printf("ERROR: %v - failed to parse token: %v\n", utils.GetFuncName(1), err)
 		return nil, errBadToken
 	}
 	if claims, ok := token.Claims.(*CustomClaims); ok && token.Valid {
 		if issuer := claims.Issuer; issuer != "GQLShop" {
-			log.Printf("CheckJWT: bad issuer in claims\n")
+			log.Printf("ALERT: %v - bad issuer in claims - %v\n", utils.GetFuncName(1), issuer)
 			return nil, errBadToken
 		}
-		var hexID string
-		if hexID = claims.ID; hexID == "" {
-			log.Printf("CheckJWT: empty user hex ID in claims\n")
+		var userIDHex string
+		if userIDHex = claims.ID; userIDHex == "" {
+			log.Printf("ALERT: %v - empty ID in claims\n", utils.GetFuncName(1))
 			return nil, errBadToken
 		}
-		bsonID, err := bson.ObjectIDFromHex(hexID)
+		userID, err := bson.ObjectIDFromHex(userIDHex)
 		if err != nil {
-			log.Printf("CheckJWT: hex string is not valid ObjectId - %v\n", err)
+			log.Printf("ALERT: %v - hex string is not valid ObjectId - %v\n", utils.GetFuncName(1), err)
 			return nil, errBadToken
 		}
 		var res struct {
 			Version int `bson:"version"`
 		}
-		filter, opts := bson.M{"_id": bsonID}, options.FindOne().SetProjection(bson.M{"version": 1})
-		if err := u.Coll().FindOne(ctx, filter, opts).Decode(&res); err != nil {
-			if errors.Is(err, mongo.ErrNoDocuments) {
-				log.Printf("CheckJWT: user is not exist - %v\n", err)
-				return nil, errBadToken
+		u.mu.RLock()
+		if data, ok := u.cache[userID]; ok {
+			log.Printf("INFO: %v - hit cache for user ID - %v\n", utils.GetFuncName(1), userID.Hex())
+			res.Version = data.userVer
+			u.mu.RUnlock()
+		} else {
+			log.Printf("INFO: %v - cache missing for user ID - %v. Will be get from mongo.\n", utils.GetFuncName(1), userID.Hex())
+			u.mu.RUnlock()
+			filter, opts := bson.M{"_id": userID}, options.FindOne().SetProjection(bson.M{"version": 1})
+			if err := u.Coll().FindOne(ctx, filter, opts).Decode(&res); err != nil {
+				if errors.Is(err, mongo.ErrNoDocuments) {
+					log.Printf("ALERT: %v - user with ID %v is not exist in mongo\n", utils.GetFuncName(1), userID.Hex())
+					return nil, errBadToken
+				}
+				log.Printf("ERROR: %v - finding in mongo: %v\n", utils.GetFuncName(1), err)
+				return nil, errDB
 			}
-			log.Printf("CheckJWT: fetch user error - %v\n", err)
-			return nil, errDB
+			u.mu.Lock()
+			u.cache[userID] = struct {
+				createdAT time.Time
+				userVer   int
+			}{time.Now(), res.Version}
+			u.mu.Unlock()
+			log.Printf("INFO: %v - user with ID %v is added to cache.\n", utils.GetFuncName(1), userID.Hex())
 		}
 		if res.Version != claims.UserVersion {
-			log.Printf("CheckJWT: bad user version in claims\n")
+			log.Printf("ALERT: %v - user with ID %v - bad version: want - %v, got - %v/\n", utils.GetFuncName(1), userID.Hex(), res.Version, claims.UserVersion)
 			return nil, errBadToken
 		}
-		newCtx := context.WithValue(ctx, userKey, bsonID)
-		log.Printf("CheckJWT: success, userID - %v\n", bsonID)
+		newCtx := context.WithValue(ctx, utils.UserKey, userID.Hex())
+		log.Printf("SUCCESS: %v. Token is checked, user ID - %v.\n", utils.GetFuncName(1), userID.Hex())
 		return newCtx, nil
 	}
-	log.Printf("CheckJWT: invalid token or claims")
-	return nil, errors.New("invalid token or claims")
+	log.Printf("ALERT: %v - bad token - %v\n", utils.GetFuncName(1), tokenString)
+	return nil, errBadToken
 }
 
 func (u *UserRepo) Reg(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		log.Printf("registration - bad method. Want - POST, get - %v\n", r.Method)
+		log.Printf("ALERT: %v - bad HTTP method. Want - POST, get - %v\n", utils.GetFuncName(1), r.Method)
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	var userData struct{ User *User }
 	if err := json.NewDecoder(r.Body).Decode(&userData); err != nil {
-		log.Printf("registration - invalid JSON body - %v\n", err)
+		log.Printf("ALERT: %v - invalid JSON body - %v\n", utils.GetFuncName(1), err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -169,7 +229,7 @@ func (u *UserRepo) Reg(w http.ResponseWriter, r *http.Request) {
 		for _, fe := range valErr {
 			badFields = append(badFields, fe.StructField())
 		}
-		log.Printf("registration - invalid input data - %v\n", strings.Join(badFields, " "))
+		log.Printf("ALERT: %v - invalid input data - %v\n", utils.GetFuncName(1), strings.Join(badFields, " "))
 		resp := map[string]map[string]any{
 			"body": {
 				"status":  "fail",
@@ -178,7 +238,7 @@ func (u *UserRepo) Reg(w http.ResponseWriter, r *http.Request) {
 		}
 		w.WriteHeader(http.StatusBadRequest)
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
-			log.Printf("registration - body encoding error - %v\n", err)
+			log.Printf("ERROR: %v - body encoding error - %v\n", utils.GetFuncName(1), err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -188,11 +248,9 @@ func (u *UserRepo) Reg(w http.ResponseWriter, r *http.Request) {
 	user, err := u.Create(r.Context(), userData.User)
 	if err != nil {
 		if errors.Is(err, errUserExist) {
-			log.Printf("registration - duplicate username or email - %v\n", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		log.Printf("registration - user creating error - %v\n", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -207,7 +265,7 @@ func (u *UserRepo) Reg(w http.ResponseWriter, r *http.Request) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	ss, err := token.SignedString(u.Secret)
 	if err != nil {
-		log.Printf("registration - signing token error - %v\n", err)
+		log.Printf("ERROR: %v - signing token error - %v\n", utils.GetFuncName(1), err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -220,77 +278,10 @@ func (u *UserRepo) Reg(w http.ResponseWriter, r *http.Request) {
 			"token":   ss,
 		},
 	}
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		log.Printf("registration - body encoding error - %v\n", err)
+	if err = json.NewEncoder(w).Encode(resp); err != nil {
+		log.Printf("ERROR: %v - body encoding error - %v\n", utils.GetFuncName(1), err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	log.Printf("registration success - %v\n", user.Name)
-}
-
-func (u *UserRepo) GetUserCart(ctx context.Context) (*custom.Cart, error) {
-	ID, ok := ctx.Value(userKey).(bson.ObjectID)
-	if !ok {
-		log.Printf("GetUserCart: user Id is not in context\n")
-		return nil, errDB
-	}
-	//cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	//defer cancel()
-	var res struct {
-		Cart *custom.Cart `bson:"cart"`
-	}
-	if err := u.Database(dbName).Collection(userCollName).FindOne(
-		ctx,
-		bson.M{"_id": ID},
-		options.FindOne().SetProjection(bson.M{"cart": 1}),
-	).Decode(&res); err != nil {
-		if errors.Is(err, mongo.ErrNoDocuments) {
-			log.Printf("GetUserCart: user Id %v is not exist\n", ID)
-			return nil, errors.New("user is not exist")
-		}
-		log.Printf("GetUserCart: finding in db error - %v\n", err)
-		return nil, errDB
-	}
-	log.Printf("GetUserCart: succes fo user %v\n", ID)
-	return res.Cart, nil
-}
-
-func (u *UserRepo) UpdateUserCart(ctx context.Context, cart *custom.Cart) error {
-	ID, ok := ctx.Value(userKey).(bson.ObjectID)
-	if !ok {
-		log.Printf("UpdateUserCart: user Id is not in context\n")
-		return errDB
-	}
-	//cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	//defer cancel()
-	res, err := u.Database(dbName).Collection(userCollName).UpdateByID(
-		ctx,
-		ID,
-		bson.M{"$set": bson.M{"cart": cart}},
-	)
-	if err != nil {
-		log.Printf("UpdateUserCart: finding in db error - %v\n", err)
-		return errDB
-	}
-	if res.MatchedCount == 0 {
-		log.Printf("UpdateUserCart: user Id %v is not exist\n", ID)
-		return errors.New("user is not exist")
-	}
-	log.Printf("UpdateUserCart: success fo user ID %v\n", ID)
-	return nil
-}
-
-func (u *UserRepo) GetItemCountInCart(ctx context.Context, itemID int) (int, error) {
-	cart, err := u.GetUserCart(ctx)
-	if err != nil {
-		log.Printf("GetItemCountInCart: GetUserCart error - %v\n", err)
-		return -1, err
-	}
-	for i := range cart.CartItems {
-		if cart.CartItems[i].ItemID == itemID {
-			return cart.CartItems[i].Quantity, nil
-		}
-	}
-	log.Printf("GetItemCountInCart: success fo item ID %v\n", itemID)
-	return 0, nil
+	log.Printf("SUCCESS: %v. User is registered, user ID - %v, user name - %v.\n", utils.GetFuncName(1), user.ID.Hex(), user.Name)
 }
