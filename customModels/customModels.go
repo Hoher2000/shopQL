@@ -18,7 +18,7 @@ type Cart struct {
 func (c Cart) String() string {
 	items := make([]string, len(c.CartItems))
 	for i, item := range c.CartItems {
-		items[i] = fmt.Sprintf("ID %v: %v pcs", item.ItemID, item.Quantity)
+		items[i] = fmt.Sprintf("item ID %v: %v pcs", item.ItemID, item.Quantity)
 	}
 	return strings.Join(items, ", ")
 }
@@ -27,7 +27,7 @@ type OrderItem struct {
 	ID            string `json:"ID" bson:"_id"`
 	OrderID       string `json:"orderID" bson:"orderID"`
 	ItemID        int    `json:"itemID" bson:"itemID"`
-	ItemName      string `json:"itemName" bson:"itemName"`
+	Name          string `json:"name" bson:"name"`
 	PurchasePrice int    `json:"price" bson:"price"`
 	Quantity      int    `json:"quantity" bson:"quantity"`
 }
@@ -35,6 +35,7 @@ type OrderItem struct {
 type Order struct {
 	ID        string    `json:"ID" bson:"_id"`
 	UserID    string    `json:"userID" bson:"userID"`
+	TotalSum  int       `json:"sum" bson:"sum"`
 	CreatedAt time.Time `bson:"createdAt" json:"createdAt"`
 }
 
@@ -59,7 +60,7 @@ type Item struct {
 type Comment struct {
 	ID        string    `json:"id" bson:"_id,omitempty"`
 	Text      string    `json:"text" bson:"text"`
-	UserID    string    `json:"userID" bson:"userID"`
+	UserName  string    `json:"user" bson:"user"`
 	ItemID    int       `json:"itemID" bson:"itemID"`
 	CreatedAt time.Time `bson:"createdAt" json:"createdAt"`
 	UpdatedAt time.Time `bson:"updatedAt" json:"updatedAt"`

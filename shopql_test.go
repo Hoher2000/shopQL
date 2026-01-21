@@ -1439,6 +1439,327 @@ func TestApp(t *testing.T) {
 			  }
 			`,
 		},
+		&ApiTestCase{
+			Name: "User 1 - Make Order",
+			GQL: `
+			mutation {
+				MakeOrder {
+				  totalSum
+				  items {
+				  	itemID
+					name
+					purchasePrice
+					quantity
+				  }
+			}
+		}
+			`,
+			URL:       gqlURL,
+			TokenName: "token1",
+			ExpectedRaw: `{
+				"data":{
+					"MakeOrder":{
+						"totalSum":68,
+						"items":[
+							{"itemID":12,"name":"Да Хун Пао","purchasePrice":17,"quantity":4}
+						]
+					}
+				}
+			}
+			`,
+		},
+		// ----------------------------------------------------------------------------------------
+		&ApiTestCase{
+			Name: "User 1 - Make Order twice - Error",
+			GQL: `
+			mutation {
+				MakeOrder {
+				  items {
+				  	itemID
+					name
+					purchasePrice
+					quantity
+				  }
+			}
+		}
+			`,
+			URL:       gqlURL,
+			TokenName: "token1",
+			ExpectedRaw: `{
+				"errors":[
+					{"message":"cart is empty. Nothing to order","path":["MakeOrder"]}
+				],
+				"data":null
+			}
+			`,
+		},
+		// ----------------------------------------------------------------------------------------
+		&ApiTestCase{
+			Name: "User 1 - Search Orders",
+			GQL: `
+			{
+				 MyOrders(params: {}) {
+				  totalSum
+				  items {
+				  	itemID
+					name
+					purchasePrice
+					quantity
+				  }
+			}
+		}
+			`,
+			URL:       gqlURL,
+			TokenName: "token1",
+			ExpectedRaw: `{
+				"data":{
+					"MyOrders":[
+						{
+							"totalSum":68,
+							"items":[
+								{
+									"itemID":12,
+									"name":"Да Хун Пао",
+									"purchasePrice":17,
+									"quantity":4
+								}
+							]
+						}	
+					]
+				}
+			}
+			`,
+		},
+		// ----------------------------------------------------------------------------------------
+		&ApiTestCase{
+			Name: "Catalog page with inCart param after order",
+			GQL: `
+			query{
+				Catalog(ID: "5") {
+				  id
+				  name
+				  items(limit:8) {
+					id
+					name
+					inCart
+					price
+				  }
+				}
+			}
+			`,
+			URL:       gqlURL,
+			TokenName: "token1",
+			ExpectedRaw: `
+			{
+				"data": {
+				  "Catalog": {
+					"id": 5,
+					"name": "Чай",
+					"items": [
+					  {
+						"id": 9,
+						"name": "Си Пу Юань, Шен Пуэр",
+						"inCart": 0,
+						"price":10
+					  },
+					  {
+						"id": 10,
+						"name": "Мэнхай 7542, Шен Пуэр",
+						"inCart": 0,
+						"price":12
+					  },
+					  {
+						"id": 11,
+						"name": "Дянь Хун",
+						"inCart": 0,
+						"price":14
+					  },
+					  {
+						"id": 12,
+						"name": "Да Хун Пао",
+						"inCart": 0,
+						"price":17
+					  },
+					  {
+						"id": 13,
+						"name": "Габа Улун",
+						"inCart": 0,
+						"price":17
+					  }
+					]
+				  }
+				}
+			  }
+			`,
+		},
+		&ApiTestCase{
+			Name: "User 1: Add to cart - after making order",
+			GQL: `
+			mutation {
+				AddToCart(in: {itemID: 8, quantity: 3}) {
+				  items {
+				  item {
+					id
+					name
+					inStockText
+				  }
+				  quantity
+				}
+			}
+		}
+			`,
+			URL:       gqlURL,
+			TokenName: "token1",
+			ExpectedRaw: `{
+				"data":{
+					"AddToCart":{
+						"items":[
+							{
+								"item":{
+									"id":8,
+									"name":"Head First. Изучаем Go | Макгаврен Джей",
+									"inStockText":"мало"
+								},
+								"quantity":3
+							}
+						]
+					}
+				}
+			}`,
+		},
+		// ----------------------------------------------------------------------------------------
+		&ApiTestCase{
+			Name: "User 1 - Make Order",
+			GQL: `
+			mutation {
+				MakeOrder {
+				  totalSum
+				  items {
+				  	itemID
+					name
+					purchasePrice
+					quantity
+				  }
+			}
+		}
+			`,
+			URL:       gqlURL,
+			TokenName: "token1",
+			ExpectedRaw: `{
+				"data":{
+					"MakeOrder":{
+						"totalSum":36,
+						"items":[
+							{
+								"itemID":8,
+								"name":"Head First. Изучаем Go | Макгаврен Джей",
+								"purchasePrice":12,
+								"quantity":3
+							}
+						]
+					}
+				}
+			}
+			`,
+		},
+		// ----------------------------------------------------------------------------------------
+		&ApiTestCase{
+			Name: "User 1 - Search Orders Sort by sum",
+			GQL: `
+			{
+				 MyOrders(params: {sort: PRICE}) {
+				  totalSum
+				  items {
+				  	itemID
+					name
+					purchasePrice
+					quantity
+				  }
+			}
+		}
+			`,
+			URL:       gqlURL,
+			TokenName: "token1",
+			ExpectedRaw: `{
+    "data": {
+        "MyOrders": [
+            {
+                "totalSum": 36,
+                "items": [
+                    {
+                        "itemID": 8,
+                        "name": "Head First. Изучаем Go | Макгаврен Джей",
+                        "purchasePrice": 12,
+                        "quantity": 3
+                    }
+                ]
+            },
+            {
+                "totalSum": 68,
+                "items": [
+                    {
+                        "itemID": 12,
+                        "name": "Да Хун Пао",
+                        "purchasePrice": 17,
+                        "quantity": 4
+                    }
+                ]
+            }
+        ]
+    }
+}
+			`,
+		},
+		// ----------------------------------------------------------------------------------------
+		&ApiTestCase{
+			Name: "User 1 - Search Orders Sort by date",
+			GQL: `
+			{
+				 MyOrders(params: {sort: CREATED_AT}) {
+				  totalSum
+				  items {
+				  	itemID
+					name
+					purchasePrice
+					quantity
+				  }
+			}
+		}
+			`,
+			URL:       gqlURL,
+			TokenName: "token1",
+			ExpectedRaw: `{
+    "data": {
+        "MyOrders": [			 
+            {
+                "totalSum": 36,
+                "items": [
+                    {
+                        "itemID": 8,
+                        "name": "Head First. Изучаем Go | Макгаврен Джей",
+                        "purchasePrice": 12,
+                        "quantity": 3
+                    }
+                ]
+            },
+			{
+                "totalSum": 68,				
+                "items": [
+                    {
+                        "itemID": 12,
+                        "name": "Да Хун Пао",
+                        "purchasePrice": 17,
+                        "quantity": 4
+                    }
+                ]
+            }        
+        ]
+    }
+}
+			`,
+		},
+		// ----------------------------------------------------------------------------------------
+
 	}
 
 	for _, item := range testCases {

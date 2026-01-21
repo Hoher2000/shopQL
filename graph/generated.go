@@ -44,7 +44,6 @@ type ResolverRoot interface {
 	CartItem() CartItemResolver
 	Catalog() CatalogResolver
 	Comment() CommentResolver
-	InOrderItem() InOrderItemResolver
 	Item() ItemResolver
 	Mutation() MutationResolver
 	Query() QueryResolver
@@ -90,7 +89,7 @@ type ComplexityRoot struct {
 	InOrderItem struct {
 		ID            func(childComplexity int) int
 		ItemID        func(childComplexity int) int
-		ItemName      func(childComplexity int) int
+		Name          func(childComplexity int) int
 		PurchasePrice func(childComplexity int) int
 		Quantity      func(childComplexity int) int
 	}
@@ -119,11 +118,12 @@ type ComplexityRoot struct {
 	}
 
 	Query struct {
-		Catalog func(childComplexity int, id string) int
-		Item    func(childComplexity int, id string) int
-		MyCart  func(childComplexity int) int
-		Search  func(childComplexity int, params *model.SearchParameters) int
-		Seller  func(childComplexity int, id string) int
+		Catalog  func(childComplexity int, id string) int
+		Item     func(childComplexity int, id string) int
+		MyCart   func(childComplexity int) int
+		MyOrders func(childComplexity int, params *model.SearchParameters) int
+		Search   func(childComplexity int, params *model.SearchParameters) int
+		Seller   func(childComplexity int, id string) int
 	}
 
 	Seller struct {
@@ -137,6 +137,7 @@ type ComplexityRoot struct {
 		CreatedAt func(childComplexity int) int
 		ID        func(childComplexity int) int
 		Items     func(childComplexity int) int
+		TotalSum  func(childComplexity int) int
 		UserID    func(childComplexity int) int
 	}
 }
@@ -155,12 +156,8 @@ type CatalogResolver interface {
 	Items(ctx context.Context, obj *custom.Catalog, limit *int, offset *int) ([]*custom.Item, error)
 }
 type CommentResolver interface {
-	UserName(ctx context.Context, obj *custom.Comment) (string, error)
 	Item(ctx context.Context, obj *custom.Comment) (*custom.Item, error)
 	Rating(ctx context.Context, obj *custom.Comment) (float64, error)
-}
-type InOrderItemResolver interface {
-	ItemID(ctx context.Context, obj *custom.OrderItem) (string, error)
 }
 type ItemResolver interface {
 	InStockText(ctx context.Context, obj *custom.Item) (string, error)
@@ -185,12 +182,13 @@ type QueryResolver interface {
 	Item(ctx context.Context, id string) (*custom.Item, error)
 	MyCart(ctx context.Context) (*custom.Cart, error)
 	Search(ctx context.Context, params *model.SearchParameters) ([]*custom.Item, error)
+	MyOrders(ctx context.Context, params *model.SearchParameters) ([]*custom.Order, error)
 }
 type SellerResolver interface {
 	Items(ctx context.Context, obj *custom.Seller, limit *int, offset *int) ([]*custom.Item, error)
 }
 type UserOrderResolver interface {
-	Items(ctx context.Context, obj *custom.Order) (*custom.OrderItem, error)
+	Items(ctx context.Context, obj *custom.Order) ([]*custom.OrderItem, error)
 }
 
 type executableSchema struct {
@@ -335,12 +333,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.InOrderItem.ItemID(childComplexity), true
-	case "InOrderItem.itemName":
-		if e.complexity.InOrderItem.ItemName == nil {
+	case "InOrderItem.name":
+		if e.complexity.InOrderItem.Name == nil {
 			break
 		}
 
-		return e.complexity.InOrderItem.ItemName(childComplexity), true
+		return e.complexity.InOrderItem.Name(childComplexity), true
 	case "InOrderItem.purchasePrice":
 		if e.complexity.InOrderItem.PurchasePrice == nil {
 			break
@@ -516,6 +514,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Query.MyCart(childComplexity), true
+	case "Query.MyOrders":
+		if e.complexity.Query.MyOrders == nil {
+			break
+		}
+
+		args, err := ec.field_Query_MyOrders_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.MyOrders(childComplexity, args["params"].(*model.SearchParameters)), true
 	case "Query.Search":
 		if e.complexity.Query.Search == nil {
 			break
@@ -587,6 +596,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.UserOrder.Items(childComplexity), true
+	case "UserOrder.totalSum":
+		if e.complexity.UserOrder.TotalSum == nil {
+			break
+		}
+
+		return e.complexity.UserOrder.TotalSum(childComplexity), true
 	case "UserOrder.userID":
 		if e.complexity.UserOrder.UserID == nil {
 			break
@@ -806,8 +821,8 @@ type Cart @goModel(model: "github.com/Hoher2000/shopQL/customModels.Cart") {
 
 type InOrderItem @goModel(model: "github.com/Hoher2000/shopQL/customModels.OrderItem") {
   id: ID!        
-	itemID: String!
-	itemName:      String!
+	itemID: Int!
+	name:      String!
 	purchasePrice: Int!
 	quantity:     Int!
 }
@@ -816,7 +831,8 @@ type UserOrder @goModel(model: "github.com/Hoher2000/shopQL/customModels.Order")
     id: ID!
     userID: ID!
     createdAt: Time!
-    items: InOrderItem! @goField(forceResolver: true)
+    totalSum: Int!
+    items: [InOrderItem!]! @goField(forceResolver: true)
 }
 
 type Query {
@@ -825,6 +841,7 @@ type Query {
   Item(ID: ID!): Item!
   MyCart: Cart! @auth
   Search(params: SearchParameters): [Item!]!
+  MyOrders(params: SearchParameters): [UserOrder!]! @auth
 }
 
 type Mutation {
@@ -959,6 +976,17 @@ func (ec *executionContext) field_Query_Item_args(ctx context.Context, rawArgs m
 		return nil, err
 	}
 	args["ID"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_MyOrders_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "params", ec.unmarshalOSearchParameters2ᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋgraphᚋmodelᚐSearchParameters)
+	if err != nil {
+		return nil, err
+	}
+	args["params"] = arg0
 	return args, nil
 }
 
@@ -1508,7 +1536,7 @@ func (ec *executionContext) _Comment_userName(ctx context.Context, field graphql
 		field,
 		ec.fieldContext_Comment_userName,
 		func(ctx context.Context) (any, error) {
-			return ec.resolvers.Comment().UserName(ctx, obj)
+			return obj.UserName, nil
 		},
 		nil,
 		ec.marshalNString2string,
@@ -1521,8 +1549,8 @@ func (ec *executionContext) fieldContext_Comment_userName(_ context.Context, fie
 	fc = &graphql.FieldContext{
 		Object:     "Comment",
 		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
+		IsMethod:   false,
+		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type String does not have child fields")
 		},
@@ -1706,10 +1734,10 @@ func (ec *executionContext) _InOrderItem_itemID(ctx context.Context, field graph
 		field,
 		ec.fieldContext_InOrderItem_itemID,
 		func(ctx context.Context) (any, error) {
-			return ec.resolvers.InOrderItem().ItemID(ctx, obj)
+			return obj.ItemID, nil
 		},
 		nil,
-		ec.marshalNString2string,
+		ec.marshalNInt2int,
 		true,
 		true,
 	)
@@ -1719,23 +1747,23 @@ func (ec *executionContext) fieldContext_InOrderItem_itemID(_ context.Context, f
 	fc = &graphql.FieldContext{
 		Object:     "InOrderItem",
 		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
+		IsMethod:   false,
+		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type String does not have child fields")
+			return nil, errors.New("field of type Int does not have child fields")
 		},
 	}
 	return fc, nil
 }
 
-func (ec *executionContext) _InOrderItem_itemName(ctx context.Context, field graphql.CollectedField, obj *custom.OrderItem) (ret graphql.Marshaler) {
+func (ec *executionContext) _InOrderItem_name(ctx context.Context, field graphql.CollectedField, obj *custom.OrderItem) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
 		ec.OperationContext,
 		field,
-		ec.fieldContext_InOrderItem_itemName,
+		ec.fieldContext_InOrderItem_name,
 		func(ctx context.Context) (any, error) {
-			return obj.ItemName, nil
+			return obj.Name, nil
 		},
 		nil,
 		ec.marshalNString2string,
@@ -1744,7 +1772,7 @@ func (ec *executionContext) _InOrderItem_itemName(ctx context.Context, field gra
 	)
 }
 
-func (ec *executionContext) fieldContext_InOrderItem_itemName(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_InOrderItem_name(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "InOrderItem",
 		Field:      field,
@@ -2601,6 +2629,8 @@ func (ec *executionContext) fieldContext_Mutation_MakeOrder(_ context.Context, f
 				return ec.fieldContext_UserOrder_userID(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_UserOrder_createdAt(ctx, field)
+			case "totalSum":
+				return ec.fieldContext_UserOrder_totalSum(ctx, field)
 			case "items":
 				return ec.fieldContext_UserOrder_items(ctx, field)
 			}
@@ -2888,6 +2918,72 @@ func (ec *executionContext) fieldContext_Query_Search(ctx context.Context, field
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Query_Search_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_MyOrders(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_MyOrders,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Query().MyOrders(ctx, fc.Args["params"].(*model.SearchParameters))
+		},
+		func(ctx context.Context, next graphql.Resolver) graphql.Resolver {
+			directive0 := next
+
+			directive1 := func(ctx context.Context) (any, error) {
+				if ec.directives.Auth == nil {
+					var zeroVal []*custom.Order
+					return zeroVal, errors.New("directive auth is not implemented")
+				}
+				return ec.directives.Auth(ctx, nil, directive0)
+			}
+
+			next = directive1
+			return next
+		},
+		ec.marshalNUserOrder2ᚕᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐOrderᚄ,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_MyOrders(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_UserOrder_id(ctx, field)
+			case "userID":
+				return ec.fieldContext_UserOrder_userID(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_UserOrder_createdAt(ctx, field)
+			case "totalSum":
+				return ec.fieldContext_UserOrder_totalSum(ctx, field)
+			case "items":
+				return ec.fieldContext_UserOrder_items(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type UserOrder", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_MyOrders_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -3241,6 +3337,35 @@ func (ec *executionContext) fieldContext_UserOrder_createdAt(_ context.Context, 
 	return fc, nil
 }
 
+func (ec *executionContext) _UserOrder_totalSum(ctx context.Context, field graphql.CollectedField, obj *custom.Order) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_UserOrder_totalSum,
+		func(ctx context.Context) (any, error) {
+			return obj.TotalSum, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_UserOrder_totalSum(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "UserOrder",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _UserOrder_items(ctx context.Context, field graphql.CollectedField, obj *custom.Order) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -3251,7 +3376,7 @@ func (ec *executionContext) _UserOrder_items(ctx context.Context, field graphql.
 			return ec.resolvers.UserOrder().Items(ctx, obj)
 		},
 		nil,
-		ec.marshalNInOrderItem2ᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐOrderItem,
+		ec.marshalNInOrderItem2ᚕᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐOrderItemᚄ,
 		true,
 		true,
 	)
@@ -3269,8 +3394,8 @@ func (ec *executionContext) fieldContext_UserOrder_items(_ context.Context, fiel
 				return ec.fieldContext_InOrderItem_id(ctx, field)
 			case "itemID":
 				return ec.fieldContext_InOrderItem_itemID(ctx, field)
-			case "itemName":
-				return ec.fieldContext_InOrderItem_itemName(ctx, field)
+			case "name":
+				return ec.fieldContext_InOrderItem_name(ctx, field)
 			case "purchasePrice":
 				return ec.fieldContext_InOrderItem_purchasePrice(ctx, field)
 			case "quantity":
@@ -5305,41 +5430,10 @@ func (ec *executionContext) _Comment(ctx context.Context, sel ast.SelectionSet, 
 				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "userName":
-			field := field
-
-			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
-				defer func() {
-					if r := recover(); r != nil {
-						ec.Error(ctx, ec.Recover(ctx, r))
-					}
-				}()
-				res = ec._Comment_userName(ctx, field, obj)
-				if res == graphql.Null {
-					atomic.AddUint32(&fs.Invalids, 1)
-				}
-				return res
+			out.Values[i] = ec._Comment_userName(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
 			}
-
-			if field.Deferrable != nil {
-				dfs, ok := deferred[field.Deferrable.Label]
-				di := 0
-				if ok {
-					dfs.AddField(field)
-					di = len(dfs.Values) - 1
-				} else {
-					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
-					deferred[field.Deferrable.Label] = dfs
-				}
-				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
-					return innerFunc(ctx, dfs)
-				})
-
-				// don't run the out.Concurrently() call below
-				out.Values[i] = graphql.Null
-				continue
-			}
-
-			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		case "item":
 			field := field
 
@@ -5459,58 +5553,27 @@ func (ec *executionContext) _InOrderItem(ctx context.Context, sel ast.SelectionS
 		case "id":
 			out.Values[i] = ec._InOrderItem_id(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				atomic.AddUint32(&out.Invalids, 1)
+				out.Invalids++
 			}
 		case "itemID":
-			field := field
-
-			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
-				defer func() {
-					if r := recover(); r != nil {
-						ec.Error(ctx, ec.Recover(ctx, r))
-					}
-				}()
-				res = ec._InOrderItem_itemID(ctx, field, obj)
-				if res == graphql.Null {
-					atomic.AddUint32(&fs.Invalids, 1)
-				}
-				return res
-			}
-
-			if field.Deferrable != nil {
-				dfs, ok := deferred[field.Deferrable.Label]
-				di := 0
-				if ok {
-					dfs.AddField(field)
-					di = len(dfs.Values) - 1
-				} else {
-					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
-					deferred[field.Deferrable.Label] = dfs
-				}
-				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
-					return innerFunc(ctx, dfs)
-				})
-
-				// don't run the out.Concurrently() call below
-				out.Values[i] = graphql.Null
-				continue
-			}
-
-			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
-		case "itemName":
-			out.Values[i] = ec._InOrderItem_itemName(ctx, field, obj)
+			out.Values[i] = ec._InOrderItem_itemID(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				atomic.AddUint32(&out.Invalids, 1)
+				out.Invalids++
+			}
+		case "name":
+			out.Values[i] = ec._InOrderItem_name(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
 			}
 		case "purchasePrice":
 			out.Values[i] = ec._InOrderItem_purchasePrice(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				atomic.AddUint32(&out.Invalids, 1)
+				out.Invalids++
 			}
 		case "quantity":
 			out.Values[i] = ec._InOrderItem_quantity(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				atomic.AddUint32(&out.Invalids, 1)
+				out.Invalids++
 			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
@@ -6020,6 +6083,28 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "MyOrders":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_MyOrders(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
 		case "__type":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Query___type(ctx, field)
@@ -6159,6 +6244,11 @@ func (ec *executionContext) _UserOrder(ctx context.Context, sel ast.SelectionSet
 			}
 		case "createdAt":
 			out.Values[i] = ec._UserOrder_createdAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "totalSum":
+			out.Values[i] = ec._UserOrder_totalSum(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				atomic.AddUint32(&out.Invalids, 1)
 			}
@@ -6814,8 +6904,48 @@ func (ec *executionContext) marshalNID2string(ctx context.Context, sel ast.Selec
 	return res
 }
 
-func (ec *executionContext) marshalNInOrderItem2githubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐOrderItem(ctx context.Context, sel ast.SelectionSet, v custom.OrderItem) graphql.Marshaler {
-	return ec._InOrderItem(ctx, sel, &v)
+func (ec *executionContext) marshalNInOrderItem2ᚕᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐOrderItemᚄ(ctx context.Context, sel ast.SelectionSet, v []*custom.OrderItem) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNInOrderItem2ᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐOrderItem(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
 }
 
 func (ec *executionContext) marshalNInOrderItem2ᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐOrderItem(ctx context.Context, sel ast.SelectionSet, v *custom.OrderItem) graphql.Marshaler {
@@ -6965,6 +7095,50 @@ func (ec *executionContext) marshalNTime2timeᚐTime(ctx context.Context, sel as
 
 func (ec *executionContext) marshalNUserOrder2githubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐOrder(ctx context.Context, sel ast.SelectionSet, v custom.Order) graphql.Marshaler {
 	return ec._UserOrder(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNUserOrder2ᚕᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐOrderᚄ(ctx context.Context, sel ast.SelectionSet, v []*custom.Order) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNUserOrder2ᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐOrder(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
 }
 
 func (ec *executionContext) marshalNUserOrder2ᚖgithubᚗcomᚋHoher2000ᚋshopQLᚋcustomModelsᚐOrder(ctx context.Context, sel ast.SelectionSet, v *custom.Order) graphql.Marshaler {

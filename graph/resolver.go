@@ -23,6 +23,7 @@ type Shoper interface {
 	GetItemInStock(ctx context.Context, itemID int) (int, error)
 	GetItemPrice(ctx context.Context, ItemID int) (int, error)
 	GetItemComments(ctx context.Context, itemID int, limit *int, offset *int) ([]*custom.Comment, error)
+	GetOrderItemsFromCart(ctx context.Context, cart *custom.Cart) ([]*custom.OrderItem, error)
 	AddItemComment(ctx context.Context, itemID int, text, userName string) (*custom.Comment, error)
 	RateItem(ctx context.Context, itemID, rating int) error
 	GetItemRating(ctx context.Context, itemID int) (float64, error)
@@ -39,6 +40,9 @@ type Orderer interface {
 	AddItemToCart(ctx context.Context, itemID int, quantityDelta int) error
 	DeleteItemFromCart(ctx context.Context, itemID int) error
 	GetItemCountInCart(ctx context.Context, itemID int) (int, error)
+	MakeOrder(ctx context.Context, items []*custom.OrderItem) (*custom.Order, error)
+	GetOrderItems(ctx context.Context, orderID string) ([]*custom.OrderItem, error)
+	Search(ctx context.Context, params *model.SearchParameters) ([]*custom.Order, error)
 }
 
 type Userer interface {

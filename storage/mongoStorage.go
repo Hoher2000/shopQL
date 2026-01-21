@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -452,7 +453,7 @@ func (m *MongoDB) GetItemRating(ctx context.Context, itemID int) (float64, error
 		r = res[0]["avgRating"].(float64)
 	}
 	log.Printf("SUCCESS: %v - for itemID %v rating is %v.\n", utils.GetFuncName(1), itemID, r)
-	return 0, nil
+	return r, nil
 }
 
 func (m *MongoDB) UpdateItemRating(ctx context.Context, itemID int, rating float64) (*custom.Item, error) {
@@ -549,7 +550,12 @@ func (m *MongoDB) SearchItem(ctx context.Context, params *model.SearchParameters
 	logText := strings.Builder{}
 	logText.WriteString("INFO: Searching items ")
 	if params.CatalogID != nil {
-		catID := *params.CatalogID
+		catIDString := *params.CatalogID
+		var catID int
+		if err := utils.Int(&catID, catIDString); err != nil {
+			log.Printf("ALERT: %v - %v\n", utils.GetFuncName(1), err)
+			return nil, err
+		}
 		matchFilter = append(matchFilter, bson.E{Key: "catalogID", Value: catID})
 		logText.WriteString(fmt.Sprintf("in catalog %v ", catID))
 	}
@@ -607,10 +613,44 @@ func (m *MongoDB) SearchItem(ctx context.Context, params *model.SearchParameters
 		log.Printf("ERROR: %v -  mongo cursor decoding: %v\n", utils.GetFuncName(1), err)
 		return nil, errDB
 	}
-	log.Printf("SearchItem: success, finded - %v items\n", len(items))
 	if items == nil {
 		items = []*custom.Item{}
 	}
 	log.Printf("SUCCESS: %v - finded %v items\n", utils.GetFuncName(1), len(items))
+	return items, nil
+}
+
+func (m *MongoDB) GetOrderItemsFromCart(ctx context.Context, cart *custom.Cart) ([]*custom.OrderItem, error) {
+	slices.SortFunc(cart.CartItems, func(a, b *custom.CartItem) int { return a.ItemID - b.ItemID })
+	ids := make([]int, len(cart.CartItems))
+	for i := range ids {
+		ids[i] = cart.CartItems[i].ItemID
+	}
+	res := make([]struct {
+		ID            int    `bson:"_id"`
+		ItemName      string `bson:"name"`
+		PurchasePrice int    `bson:"price"`
+	}, len(ids))
+	filter := bson.M{"_id": bson.M{"$in": ids}}
+	opts := options.Find().SetProjection(bson.M{"name": 1, "price": 1, "_id": 1}).SetSort(bson.M{"_id": 1})
+	cursor, err := m.Database(dbName).Collection(itemsCollName).Find(ctx, filter, opts)
+	if err != nil {
+		log.Printf("ERROR: %v -  finding in mongo: %v\n", utils.GetFuncName(1), err)
+		return nil, errDB
+	}
+	if err = cursor.All(ctx, &res); err != nil {
+		log.Printf("ERROR: %v -  mongo cursor decoding: %v\n", utils.GetFuncName(1), err)
+		return nil, errDB
+	}
+	items := make([]*custom.OrderItem, len(ids))
+	for i := range ids {
+		items[i] = &custom.OrderItem{
+			ID:            bson.NewObjectID().Hex(),
+			ItemID:        res[i].ID,
+			Name:          res[i].ItemName,
+			PurchasePrice: res[i].PurchasePrice,
+			Quantity:      cart.CartItems[i].Quantity,
+		}
+	}
 	return items, nil
 }

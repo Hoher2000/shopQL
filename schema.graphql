@@ -101,8 +101,8 @@ type Cart @goModel(model: "github.com/Hoher2000/shopQL/customModels.Cart") {
 
 type InOrderItem @goModel(model: "github.com/Hoher2000/shopQL/customModels.OrderItem") {
   id: ID!        
-	itemID: String!
-	itemName:      String!
+	itemID: Int!
+	name:      String!
 	purchasePrice: Int!
 	quantity:     Int!
 }
@@ -111,7 +111,8 @@ type UserOrder @goModel(model: "github.com/Hoher2000/shopQL/customModels.Order")
     id: ID!
     userID: ID!
     createdAt: Time!
-    items: InOrderItem! @goField(forceResolver: true)
+    totalSum: Int!
+    items: [InOrderItem!]! @goField(forceResolver: true)
 }
 
 type Query {
@@ -120,6 +121,7 @@ type Query {
   Item(ID: ID!): Item!
   MyCart: Cart! @auth
   Search(params: SearchParameters): [Item!]!
+  MyOrders(params: SearchParameters): [UserOrder!]! @auth
 }
 
 type Mutation {
